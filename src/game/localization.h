@@ -71,4 +71,7 @@ extern CLocalizationDatabase g_Localization;
 [[gnu::format_arg(1)]] extern const char *BcLocalize(const char *pStr);
 // bestclient
 
+// ddnetty: looks in the [DDNetty] context first, then falls back to the normal translations
+[[gnu::format_arg(1)]] extern const char *DtLocalize(const char *pStr);
+
 #endif

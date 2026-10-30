@@ -802,6 +802,7 @@ public:
 		PAGE_SETTINGS,
 		PAGE_NETWORK,
 		PAGE_GHOST,
+		PAGE_DDNETTY, // ddnetty
 
 		PAGE_LENGTH,
 	};
@@ -984,6 +985,16 @@ private:
 	// found in menus_ingame.cpp
 	void RenderInGameNetwork(CUIRect MainView);
 	void RenderGhost(CUIRect MainView);
+
+	// ddnetty
+	enum
+	{
+		DDNETTY_TAB_GENERAL = 0,
+		NUM_DDNETTY_TABS,
+	};
+	int m_DDNettyTab = DDNETTY_TAB_GENERAL;
+	void RenderDDNetty(CUIRect MainView);
+	void RenderDDNettyGeneral(CUIRect MainView);
 
 	// TClient: found in menus_tclient.cpp
 	void RenderSettingsTClient(CUIRect MainView);
