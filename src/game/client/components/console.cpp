@@ -1006,6 +1006,22 @@ void CGameConsole::CInstance::Dump()
 	}
 }
 
+// ddnetty: copy the whole console to the clipboard
+void CGameConsole::CInstance::CopyToClipboard()
+{
+	PumpBacklogPending();
+	std::string Text;
+	int NumLines = 0;
+	for(CInstance::CBacklogEntry *pEntry = m_Backlog.First(); pEntry; pEntry = m_Backlog.Next(pEntry))
+	{
+		Text.append(pEntry->m_aText, pEntry->m_Length);
+		Text.push_back('\n');
+		NumLines++;
+	}
+	m_pGameConsole->GameClient()->Input()->SetClipboardText(Text.c_str());
+	log_info("console", "Copied %d lines of the %s to the clipboard", NumLines, m_pName);
+}
+
 CGameConsole::CGameConsole() :
 	m_LocalConsole(CONSOLETYPE_LOCAL), m_RemoteConsole(CONSOLETYPE_REMOTE)
 {
@@ -1690,6 +1706,11 @@ bool CGameConsole::OnInput(const IInput::CEvent &Event)
 	{
 		Toggle(m_ConsoleType);
 	}
+	else if(Event.m_Key == KEY_C && (Event.m_Flags & IInput::FLAG_PRESS) && Input()->ModifierIsPressed() && Input()->ShiftIsPressed())
+	{
+		// ddnetty: Ctrl+Shift+C copies the whole console
+		CurrentConsole()->CopyToClipboard();
+	}
 	else if(!CurrentConsole()->OnInput(Event))
 	{
 		if(GameClient()->Input()->ModifierIsPressed() && Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_C)
@@ -1766,6 +1787,17 @@ void CGameConsole::ConDumpRemoteConsole(IConsole::IResult *pResult, void *pUserD
 	((CGameConsole *)pUserData)->m_RemoteConsole.Dump();
 }
 
+// ddnetty
+void CGameConsole::ConCopyLocalConsole(IConsole::IResult *pResult, void *pUserData)
+{
+	((CGameConsole *)pUserData)->m_LocalConsole.CopyToClipboard();
+}
+
+void CGameConsole::ConCopyRemoteConsole(IConsole::IResult *pResult, void *pUserData)
+{
+	((CGameConsole *)pUserData)->m_RemoteConsole.CopyToClipboard();
+}
+
 void CGameConsole::ConConsolePageUp(IConsole::IResult *pResult, void *pUserData)
 {
 	CInstance *pConsole = ((CGameConsole *)pUserData)->CurrentConsole();
@@ -1840,6 +1872,8 @@ void CGameConsole::OnConsoleInit()
 	Console()->Register("clear_remote_console", "", CFGFLAG_CLIENT, ConClearRemoteConsole, this, "Clear remote console");
 	Console()->Register("dump_local_console", "", CFGFLAG_CLIENT, ConDumpLocalConsole, this, "Write local console contents to a text file");
 	Console()->Register("dump_remote_console", "", CFGFLAG_CLIENT, ConDumpRemoteConsole, this, "Write remote console contents to a text file");
+	Console()->Register("copy_local_console", "", CFGFLAG_CLIENT, ConCopyLocalConsole, this, "Copy the whole local console to the clipboard"); // ddnetty
+	Console()->Register("copy_remote_console", "", CFGFLAG_CLIENT, ConCopyRemoteConsole, this, "Copy the whole remote console to the clipboard"); // ddnetty
 
 	Console()->Register("console_page_up", "", CFGFLAG_CLIENT, ConConsolePageUp, this, "Previous page in console");
 	Console()->Register("console_page_down", "", CFGFLAG_CLIENT, ConConsolePageDown, this, "Next page in console");
