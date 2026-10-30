@@ -123,6 +123,7 @@ class CGameConsole : public CComponent
 		int GetLinesToScroll(int Direction, int LinesToScroll);
 		void ScrollToCenter(int StartLine, int EndLine);
 		void Dump() REQUIRES(!m_BacklogPendingLock);
+		void CopyToClipboard() REQUIRES(!m_BacklogPendingLock); // ddnetty
 
 		const char *GetString() const { return m_Input.GetString(); }
 		/**
@@ -186,6 +187,8 @@ class CGameConsole : public CComponent
 	static void ConClearRemoteConsole(IConsole::IResult *pResult, void *pUserData);
 	static void ConDumpLocalConsole(IConsole::IResult *pResult, void *pUserData);
 	static void ConDumpRemoteConsole(IConsole::IResult *pResult, void *pUserData);
+	static void ConCopyLocalConsole(IConsole::IResult *pResult, void *pUserData); // ddnetty
+	static void ConCopyRemoteConsole(IConsole::IResult *pResult, void *pUserData); // ddnetty
 	static void ConConsolePageUp(IConsole::IResult *pResult, void *pUserData);
 	static void ConConsolePageDown(IConsole::IResult *pResult, void *pUserData);
 	static void ConConsolePageTop(IConsole::IResult *pResult, void *pUserData);
