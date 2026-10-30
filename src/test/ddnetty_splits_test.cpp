@@ -155,16 +155,58 @@ TEST(DdnettySplits, ForgetPointMergesAround)
 	SGate Gate;
 	Gate.m_Id = 1;
 	Data.m_vGates.push_back(Gate);
+	Gate.m_Id = 2;
+	Data.m_vGates.push_back(Gate); // another checkpoint stays, so deleting gate 1 merges
 	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, G1, 1000));
 	Data.m_vAttempts.push_back(Att(1, 100, G1, POINT_FINISH, 2000));
 	Data.m_vAttempts.push_back(Att(2, 200, G1, POINT_FINISH, 1500)); // started at the gate
 
+	EXPECT_EQ(Data.GateDeleteCount(1), 0);
 	Data.DeleteGate(1);
-	EXPECT_TRUE(Data.m_vGates.empty());
+	ASSERT_EQ(Data.m_vGates.size(), 1u);
 	ASSERT_EQ(Data.m_vAttempts.size(), 1u);
 	EXPECT_EQ(Data.m_vAttempts[0].m_From, POINT_START);
 	EXPECT_EQ(Data.m_vAttempts[0].m_To, POINT_FINISH);
 	EXPECT_EQ(Data.m_vAttempts[0].m_Millis, 3000);
+	EXPECT_TRUE(Data.m_vAttempts[0].m_FromGate);
+	EXPECT_NE(CSplitsData::FormatAttempt(Data.m_vAttempts[0]).find(" g"), std::string::npos);
+}
+
+TEST(DdnettySplits, DeletingLastGateRemovesItsData)
+{
+	const int G2 = GatePoint(2);
+	CSplitsData Data;
+	SGate Gate;
+	Gate.m_Id = 1;
+	Data.m_vGates.push_back(Gate);
+	Gate.m_Id = 2;
+	Data.m_vGates.push_back(Gate);
+	// run 1 used both checkpoints and a map time checkpoint
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, G1, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, G1, 0, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, 0, G2, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, G2, POINT_FINISH, 1000));
+	// run 2 never touched a checkpoint
+	Data.m_vAttempts.push_back(Att(2, 200, POINT_START, 0, 1500));
+	Data.m_vAttempts.push_back(Att(2, 200, 0, POINT_FINISH, 2500));
+
+	Data.DeleteGate(1); // merges S -> T0 for run 1, marked as coming from a checkpoint
+	ASSERT_EQ(Data.m_vGates.size(), 1u);
+	EXPECT_EQ(Data.GateDeleteCount(2), 3); // the merged S -> T0, T0 -> G2 and G2 -> F
+	EXPECT_EQ(Data.AllGatesDeleteCount(), 3);
+
+	Data.DeleteGate(2);
+	EXPECT_TRUE(Data.m_vGates.empty());
+	ASSERT_EQ(Data.m_vAttempts.size(), 2u); // only run 2 is left
+	for(const SAttempt &Attempt : Data.m_vAttempts)
+		EXPECT_EQ(Attempt.m_RunId, 2);
+
+	// old files without the mark still load
+	CSplitsData Old;
+	EXPECT_TRUE(Old.ParseLine("att 1 100 0 S F 3000"));
+	EXPECT_FALSE(Old.m_vAttempts[0].m_FromGate);
+	EXPECT_TRUE(Old.ParseLine("att 2 100 0 S F 3000 g"));
+	EXPECT_TRUE(Old.m_vAttempts[1].m_FromGate);
 }
 
 TEST(DdnettySplits, DeleteSegmentSplitsRun)
@@ -234,4 +276,51 @@ TEST(DdnettySplits, TargetTime)
 	Data.Clear();
 	EXPECT_EQ(Data.m_TargetMillis, -1);
 	EXPECT_EQ(Data.Serialize().find("target"), std::string::npos);
+}
+
+TEST(DdnettySplits, ChartData)
+{
+	CSplitsData Data;
+	const int64_t Day = 86400;
+	const int64_t Now = 100 * Day + 3600;
+	// two finished runs and one practice part, on different days
+	Data.m_vAttempts.push_back(Att(1, Now - 2 * Day, POINT_START, 0, 10000));
+	Data.m_vAttempts.push_back(Att(1, Now - 2 * Day, 0, POINT_FINISH, 20000));
+	Data.m_vAttempts.push_back(Att(2, Now, POINT_START, 0, 12000));
+	Data.m_vAttempts.push_back(Att(2, Now, 0, POINT_FINISH, 16000));
+	Data.m_vAttempts.push_back(Att(3, Now, 0, POINT_FINISH, 18000, true));
+
+	const auto vRuns = Data.FinishedRuns(true);
+	ASSERT_EQ(vRuns.size(), 2u);
+	EXPECT_EQ(vRuns[0].m_Millis, 30000);
+	EXPECT_EQ(vRuns[1].m_Millis, 28000);
+
+	const SOptions Options;
+	const SAnalysis Analysis = Data.Analyze(Options);
+	const auto vLosses = CSplitsData::Losses(Analysis);
+	ASSERT_EQ(vLosses.size(), 2u);
+	EXPECT_EQ(vLosses[0].m_From, 0); // T0 -> F: best 16, mean 18 -> loses 2s
+	EXPECT_EQ(vLosses[0].m_Loss, 2000);
+	EXPECT_EQ(vLosses[1].m_Loss, 1000);
+
+	const auto vHistory = CSplitsData::SegmentHistory(Analysis, 0, POINT_FINISH);
+	ASSERT_EQ(vHistory.size(), 3u);
+	EXPECT_TRUE(vHistory[0].m_NewBest);
+	EXPECT_TRUE(vHistory[1].m_NewBest);
+	EXPECT_FALSE(vHistory[2].m_NewBest);
+	EXPECT_TRUE(vHistory[2].m_Practice);
+	EXPECT_EQ(vHistory[2].m_MovingAverage, 18000);
+
+	const auto vDays = Data.Activity(Now, 0, 7);
+	ASSERT_EQ(vDays.size(), 7u);
+	EXPECT_EQ(vDays[6].m_Real, 2);
+	EXPECT_EQ(vDays[6].m_Practice, 1);
+	EXPECT_EQ(vDays[4].m_Real, 2);
+	EXPECT_EQ(vDays[5].m_Real, 0);
+
+	const auto Summary = Data.Summarize(Analysis, true);
+	EXPECT_EQ(Summary.m_FinishedRuns, 2);
+	EXPECT_EQ(Summary.m_Attempts, 5);
+	EXPECT_EQ(Summary.m_TotalMillis, 76000);
+	EXPECT_EQ(Summary.m_WorstFrom, 0); // T0 -> F has 3 attempts
 }

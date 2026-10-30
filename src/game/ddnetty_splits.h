@@ -52,6 +52,7 @@ namespace DdnettySplits
 		int m_From = POINT_NONE;
 		int m_To = POINT_NONE;
 		int m_Millis = 0;
+		bool m_FromGate = false; // made by merging around a deleted or moved checkpoint
 	};
 
 	struct SOptions
@@ -147,7 +148,61 @@ namespace DdnettySplits
 		void DeleteSegment(int From, int To, const SOptions &Options);
 		// merges the segments around Point into one, dropping the ones that can't be merged
 		void ForgetPoint(int Point);
+		// deleting one checkpoint merges its times into the neighbouring segments;
+		// deleting the last one removes everything that came from checkpoints
 		void DeleteGate(int GateId);
+		void DeleteAllGates();
+		// how many saved times deleting this checkpoint removes (0 unless it's the last one)
+		int GateDeleteCount(int GateId) const;
+		int AllGatesDeleteCount() const;
+
+		// --- data for the analysis charts ---
+		struct SRunPoint
+		{
+			int64_t m_Timestamp = 0;
+			int m_Millis = 0;
+			bool m_Practice = false;
+		};
+		std::vector<SRunPoint> FinishedRuns(bool IncludePractice) const;
+
+		struct SSegmentLoss
+		{
+			int m_From = POINT_NONE;
+			int m_To = POINT_NONE;
+			int m_Best = -1;
+			int m_Mean = -1;
+			int m_Loss = 0; // mean of the recent attempts minus the best
+		};
+		static std::vector<SSegmentLoss> Losses(const SAnalysis &Analysis); // route segments, biggest loss first
+
+		struct SHistoryPoint
+		{
+			int64_t m_Timestamp = 0;
+			int m_Millis = 0;
+			bool m_Practice = false;
+			bool m_NewBest = false; // fastest so far
+			int m_MovingAverage = 0; // mean of the last AVERAGE_WINDOW attempts up to this one
+		};
+		static std::vector<SHistoryPoint> SegmentHistory(const SAnalysis &Analysis, int From, int To);
+
+		struct SDayActivity
+		{
+			int m_Real = 0;
+			int m_Practice = 0;
+		};
+		// attempts per local day, oldest first, the last entry is today
+		std::vector<SDayActivity> Activity(int64_t Now, int64_t UtcOffsetSeconds, int NumDays) const;
+
+		struct SSummary
+		{
+			int m_FinishedRuns = 0;
+			int m_Attempts = 0;
+			int64_t m_TotalMillis = 0;
+			int m_WorstFrom = POINT_NONE; // route segment with the biggest variation
+			int m_WorstTo = POINT_NONE;
+			int m_WorstStdDev = -1;
+		};
+		SSummary Summarize(const SAnalysis &Analysis, bool IncludePractice) const;
 
 	private:
 		// gives the attempts after a gap inside a run a new run id

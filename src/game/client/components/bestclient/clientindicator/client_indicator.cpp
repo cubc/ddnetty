@@ -1176,7 +1176,8 @@ bool CClientIndicator::IsBrowserCacheRefreshing() const
 
 bool CClientIndicator::IsPresenceEnabled() const
 {
-	return Client()->State() == IClient::STATE_ONLINE;
+	// ddnetty: don't announce to the BestClient server unless asked to (it shows DDNetty as FAKE)
+	return Client()->State() == IClient::STATE_ONLINE && g_Config.m_DtBestClientPresence != 0;
 }
 
 const char *CClientIndicator::EffectiveSharedToken() const
