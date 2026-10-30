@@ -91,8 +91,8 @@ TEST(DdnettySplits, BuiltRunAndPrediction)
 	EXPECT_EQ(Analysis.m_vRoute, (std::vector<int>{POINT_START, 0, POINT_FINISH}));
 	EXPECT_EQ(Analysis.m_BuiltRun, 28000); // best of each segment
 	EXPECT_EQ(Analysis.m_BestFinished, 30000);
-	EXPECT_EQ(CSplitsData::Remaining(Analysis, 0, Options), 18000);
-	EXPECT_EQ(CSplitsData::Remaining(Analysis, POINT_FINISH, Options), 0);
+	EXPECT_EQ(CSplitsData::Remaining(Analysis, Analysis.RouteIndex(0), Options), 18000);
+	EXPECT_EQ(CSplitsData::Remaining(Analysis, Analysis.RouteIndex(POINT_FINISH), Options), 0);
 
 	Options.m_UseAverage = true;
 	Analysis = Data.Analyze(Options);
@@ -198,4 +198,40 @@ TEST(DdnettySplits, RouteFollowsLatestCompleteRun)
 	const SAnalysis Analysis = Data.Analyze(SOptions());
 	EXPECT_EQ(Analysis.m_vRoute, (std::vector<int>{POINT_START, 1, POINT_FINISH}));
 	EXPECT_EQ(Analysis.m_vOtherStats.size(), 2u);
+}
+
+TEST(DdnettySplits, RepeatedPointUsesRoutePosition)
+{
+	// circular map: the gate is crossed twice, S -> G1 -> T0 -> G1 -> F
+	CSplitsData Data;
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, G1, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, G1, 0, 2000));
+	Data.m_vAttempts.push_back(Att(1, 100, 0, G1, 3000));
+	Data.m_vAttempts.push_back(Att(1, 100, G1, POINT_FINISH, 4000));
+
+	const SOptions Options;
+	const SAnalysis Analysis = Data.Analyze(Options);
+	ASSERT_TRUE(Analysis.m_RouteComplete);
+	EXPECT_EQ(Analysis.m_vRoute, (std::vector<int>{POINT_START, G1, 0, G1, POINT_FINISH}));
+	EXPECT_EQ(Analysis.m_BuiltRun, 10000);
+
+	const int First = Analysis.RouteIndex(G1);
+	const int Second = Analysis.RouteIndex(G1, First + 1);
+	EXPECT_EQ(First, 1);
+	EXPECT_EQ(Second, 3);
+	EXPECT_EQ(CSplitsData::Remaining(Analysis, First, Options), 9000);
+	EXPECT_EQ(CSplitsData::Remaining(Analysis, Second, Options), 4000);
+	EXPECT_EQ(CSplitsData::Remaining(Analysis, -1, Options), -1);
+}
+
+TEST(DdnettySplits, TargetTime)
+{
+	CSplitsData Data;
+	EXPECT_TRUE(Data.ParseLine("target 581020"));
+	EXPECT_EQ(Data.m_TargetMillis, 581020);
+	EXPECT_NE(Data.Serialize().find("target 581020\n"), std::string::npos);
+	EXPECT_FALSE(Data.ParseLine("target abc"));
+	Data.Clear();
+	EXPECT_EQ(Data.m_TargetMillis, -1);
+	EXPECT_EQ(Data.Serialize().find("target"), std::string::npos);
 }

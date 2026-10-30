@@ -107,7 +107,8 @@ namespace DdnettySplits
 		int m_BestFinished = -1; // fastest complete non-practice run, -1 if none
 
 		const SSegmentStats *Find(int From, int To) const;
-		int RouteIndex(int Point) const; // -1 if not on the route
+		// first position of Point on the route at or after FromIndex, -1 if not found
+		int RouteIndex(int Point, int FromIndex = 0) const;
 	};
 
 	class CSplitsData
@@ -117,10 +118,11 @@ namespace DdnettySplits
 
 		std::vector<SGate> m_vGates;
 		std::vector<SAttempt> m_vAttempts;
+		int m_TargetMillis = -1; // custom target time for this map, -1 if not set
 
 		void Clear();
 
-		// file format: one "gate ..." or "att ..." per line, "#" starts a comment
+		// file format: one "target ...", "gate ..." or "att ..." per line, "#" starts a comment
 		bool ParseLine(const char *pLine);
 		static std::string FormatGate(const SGate &Gate);
 		static std::string FormatAttempt(const SAttempt &Attempt);
@@ -136,8 +138,8 @@ namespace DdnettySplits
 
 		std::vector<SEffectiveAttempt> EffectiveAttempts(const SOptions &Options) const;
 		SAnalysis Analyze(const SOptions &Options) const;
-		// sum of the references from Point to the finish, -1 if unknown
-		static int Remaining(const SAnalysis &Analysis, int Point, const SOptions &Options);
+		// sum of the references from the route position RouteIndex to the finish, -1 if unknown
+		static int Remaining(const SAnalysis &Analysis, int RouteIndex, const SOptions &Options);
 
 		std::vector<SRun> Runs() const;
 

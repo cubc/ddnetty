@@ -17,6 +17,7 @@
 
 #include <generated/protocol.h>
 
+#include <game/client/components/hud_layout.h>
 #include <game/client/gameclient.h>
 #include <game/collision.h>
 #include <game/localization.h>
@@ -82,9 +83,8 @@ void CSplits::OnMapLoad()
 void CSplits::OnReset()
 {
 	ResetRun();
-	m_EditMode = false;
-	m_DragMode = DRAG_NONE;
-	m_HudShowUntil = 0;
+	SetEditMode(false);
+	m_HudDiffUntil = 0;
 }
 
 SOptions CSplits::Options() const
@@ -115,6 +115,7 @@ void CSplits::Load()
 	m_AnalysisDirty = true;
 	m_EditMode = false;
 	m_DragMode = DRAG_NONE;
+	m_Panning = false;
 	ResetRun();
 
 	char aMap[128];
@@ -175,10 +176,14 @@ void CSplits::ResetRun()
 	m_LastProcessedTick = -1;
 	m_LastPoint = POINT_NONE;
 	m_LastUsedPoint = POINT_NONE;
+	m_RouteIndex = -1;
 	m_StartTick = -1.0;
 	m_InTimecp = -1;
 	m_InStart = false;
 	m_InFinish = false;
+	m_HudPrediction = -1;
+	m_HudUnlikely = false;
+	m_HudDiffUntil = 0;
 }
 
 bool CSplits::IsPractice() const
@@ -332,41 +337,50 @@ void CSplits::OnPoint(int Point, double Tick)
 		m_LastPointTick = Tick;
 		m_LastUsedPoint = POINT_START;
 		m_LastUsedPointTick = Tick;
+		m_RouteIndex = 0;
 		m_StartTick = Tick;
+		m_HudPrediction = -1;
+		m_HudUnlikely = false;
+		m_HudDiffUntil = 0;
 		return;
 	}
 
 	// HUD: compare with the stats from before this attempt
 	if(CSplitsData::Includes(Point, Opts))
 	{
+		const SAnalysis &Current = Analysis();
+		// follow the position on the route, so a checkpoint crossed twice (circular maps) is told apart
+		int RouteIndex = Current.RouteIndex(Point, m_RouteIndex >= 0 ? m_RouteIndex + 1 : 0);
+		if(RouteIndex < 0 && m_RouteIndex < 0)
+			RouteIndex = Current.RouteIndex(Point);
+		m_RouteIndex = RouteIndex;
+
 		if(m_LastUsedPoint != POINT_NONE && m_LastUsedPoint != Point)
 		{
 			const int Millis = (int)std::lround((Tick - m_LastUsedPointTick) * 1000.0 / TickSpeed);
-			const SAnalysis &Current = Analysis();
 			const SSegmentStats *pStats = Current.Find(m_LastUsedPoint, Point);
 			const int Reference = pStats ? CSplitsData::Reference(*pStats, Opts) : -1;
-
-			m_HudSegment = PointName(m_LastUsedPoint) + " → " + PointName(Point);
-			m_HudMillis = Millis;
 			m_HudHasDiff = Reference >= 0;
 			m_HudDiff = Reference >= 0 ? Millis - Reference : 0;
-			m_HudPrediction = -1;
-			m_HudUnlikely = false;
-
-			double RaceStart = -1.0;
-			if(GameClient()->LastRaceTick() >= 0)
-				RaceStart = GameClient()->LastRaceTick();
-			else if(m_StartTick >= 0.0)
-				RaceStart = m_StartTick;
-			const int Remaining = CSplitsData::Remaining(Current, Point, Opts);
-			if(Point != POINT_FINISH && RaceStart >= 0.0 && Remaining >= 0)
-			{
-				m_HudPrediction = (int)std::lround((Tick - RaceStart) * 1000.0 / TickSpeed) + Remaining;
-				const int Record = RecordMillis();
-				m_HudUnlikely = Record > 0 && m_HudPrediction > Record;
-			}
-			m_HudShowUntil = time_get() + 3 * time_freq();
+			if(m_HudHasDiff)
+				m_HudDiffUntil = time_get() + 4 * time_freq();
 		}
+
+		m_HudPrediction = -1;
+		m_HudUnlikely = false;
+		double RaceStart = -1.0;
+		if(GameClient()->LastRaceTick() >= 0)
+			RaceStart = GameClient()->LastRaceTick();
+		else if(m_StartTick >= 0.0)
+			RaceStart = m_StartTick;
+		const int Remaining = CSplitsData::Remaining(Current, m_RouteIndex, Opts);
+		if(Point != POINT_FINISH && RaceStart >= 0.0 && Remaining >= 0)
+		{
+			m_HudPrediction = (int)std::lround((Tick - RaceStart) * 1000.0 / TickSpeed) + Remaining;
+			const int Target = TargetMillis();
+			m_HudUnlikely = Target > 0 && m_HudPrediction > Target;
+		}
+
 		m_LastUsedPoint = Point;
 		m_LastUsedPointTick = Tick;
 	}
@@ -484,6 +498,55 @@ void CSplits::FormatDiff(int Millis, char *pBuf, int BufSize)
 	str_format(pBuf, BufSize, "%c%d.%02d", Millis < 0 ? '-' : '+', Centis / 100, Centis % 100);
 }
 
+int CSplits::ParseTime(const char *pStr)
+{
+	// "m:ss.cc", "ss.cc" or "ss"
+	int Minutes = 0;
+	const char *pColon = str_find(pStr, ":");
+	const char *pSeconds = pStr;
+	if(pColon)
+	{
+		char aMinutes[16];
+		str_truncate(aMinutes, sizeof(aMinutes), pStr, pColon - pStr);
+		if(!str_toint(aMinutes, &Minutes) || Minutes < 0)
+			return -1;
+		pSeconds = pColon + 1;
+	}
+	float Seconds = 0.0f;
+	if(!str_tofloat(pSeconds, &Seconds) || Seconds < 0.0f || (pColon && Seconds >= 60.0f))
+		return -1;
+	const int Millis = Minutes * 60000 + (int)std::lround(Seconds * 1000.0f);
+	return Millis > 0 ? Millis : -1;
+}
+
+int CSplits::TargetMillis() const
+{
+	if(g_Config.m_DtSplitsTargetMode == 1)
+	{
+		const int Best = PlayerBestMillis();
+		return Best > 0 ? Best : m_Analysis.m_BestFinished;
+	}
+	if(g_Config.m_DtSplitsTargetMode == 2)
+		return m_Data.m_TargetMillis;
+	return RecordMillis();
+}
+
+const char *CSplits::WarningMessage() const
+{
+	return g_Config.m_DtSplitsMessage[0] ? g_Config.m_DtSplitsMessage : DtLocalize("Rank 1 unlikely.");
+}
+
+bool CSplits::HidesServerTimeCpDiff() const
+{
+	return g_Config.m_DtSplits && g_Config.m_DtSplitsHud && HasMap() && GameClient()->m_GameInfo.m_Race;
+}
+
+void CSplits::SetCustomTarget(int Millis)
+{
+	m_Data.m_TargetMillis = Millis > 0 ? Millis : -1;
+	Save();
+}
+
 void CSplits::DeleteRuns(const std::vector<int> &vRunIds)
 {
 	m_Data.DeleteRuns(vRunIds);
@@ -531,14 +594,63 @@ void CSplits::GatesChanged()
 
 void CSplits::SetEditMode(bool EditMode)
 {
+	const bool WasEditing = m_EditMode;
 	m_EditMode = EditMode && HasMap();
 	m_DragMode = DRAG_NONE;
 	m_DragGate = -1;
+	m_Panning = false;
+	if(m_EditMode && !WasEditing)
+	{
+		// start with the cursor where the tee is aiming
+		m_EditCameraOffset = vec2(0.0f, 0.0f);
+		m_EditCursor = GameClient()->m_Controls.m_aTargetPos[g_Config.m_ClDummy] - GameClient()->m_Camera.m_Center;
+	}
+	if(!m_EditMode)
+		m_EditCameraOffset = vec2(0.0f, 0.0f);
+}
+
+vec2 CSplits::VisibleHalfSize() const
+{
+	float Width, Height;
+	Graphics()->CalcScreenParams(Graphics()->ScreenAspect(), GameClient()->m_Camera.m_Zoom, &Width, &Height);
+	return vec2(Width, Height) / 2.0f;
 }
 
 vec2 CSplits::CursorPos() const
 {
+	if(m_EditMode)
+		return GameClient()->m_Camera.m_Center + m_EditCursor;
 	return GameClient()->m_Controls.m_aTargetPos[g_Config.m_ClDummy];
+}
+
+void CSplits::ApplyEditCamera(vec2 &Center) const
+{
+	if(m_EditMode)
+		Center += m_EditCameraOffset;
+}
+
+bool CSplits::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
+{
+	if(!m_EditMode || GameClient()->m_Menus.IsActive() || GameClient()->m_GameConsole.IsActive() || GameClient()->m_Chat.IsActive())
+		return false;
+
+	// move like the spectator free view: faster when zoomed out
+	const float Factor = g_Config.m_InpMousesens / 100.0f * GameClient()->m_Camera.m_Zoom;
+	const vec2 Delta = vec2(x, y) * Factor;
+	if(m_Panning)
+	{
+		// dragging with the middle button moves the view, the cursor stays on the same spot of the screen
+		m_EditCameraOffset -= Delta;
+		return true;
+	}
+	m_EditCursor += Delta;
+
+	// keep the cursor on screen, pushing the view when it reaches an edge
+	const vec2 Half = VisibleHalfSize();
+	const vec2 Clamped(std::clamp(m_EditCursor.x, -Half.x, Half.x), std::clamp(m_EditCursor.y, -Half.y, Half.y));
+	m_EditCameraOffset += m_EditCursor - Clamped;
+	m_EditCursor = Clamped;
+	return true;
 }
 
 vec2 CSplits::SnapPos(vec2 Pos) const
@@ -571,13 +683,13 @@ void CSplits::BeginDrag()
 	// grab the end of an existing checkpoint
 	for(const SGate &Gate : m_Data.m_vGates)
 	{
-		if(distance(Pos, vec2(Gate.m_Ax, Gate.m_Ay)) <= 12.0f)
+		if(distance(Pos, vec2(Gate.m_Ax, Gate.m_Ay)) <= 12.0f * GameClient()->m_Camera.m_Zoom)
 		{
 			m_DragMode = DRAG_END_A;
 			m_DragGate = Gate.m_Id;
 			return;
 		}
-		if(distance(Pos, vec2(Gate.m_Bx, Gate.m_By)) <= 12.0f)
+		if(distance(Pos, vec2(Gate.m_Bx, Gate.m_By)) <= 12.0f * GameClient()->m_Camera.m_Zoom)
 		{
 			m_DragMode = DRAG_END_B;
 			m_DragGate = Gate.m_Id;
@@ -655,11 +767,25 @@ bool CSplits::OnInput(const IInput::CEvent &Event)
 			EndDrag();
 		return true;
 	}
+	if(Event.m_Key == KEY_MOUSE_3)
+	{
+		if(Event.m_Flags & IInput::FLAG_PRESS)
+			m_Panning = true;
+		if(Event.m_Flags & IInput::FLAG_RELEASE)
+			m_Panning = false;
+		return true;
+	}
+	if(Event.m_Key == KEY_MOUSE_WHEEL_UP || Event.m_Key == KEY_MOUSE_WHEEL_DOWN)
+	{
+		if(Event.m_Flags & IInput::FLAG_PRESS)
+			Console()->ExecuteLine(Event.m_Key == KEY_MOUSE_WHEEL_UP ? "zoom+" : "zoom-", -1);
+		return true;
+	}
 	if(Event.m_Key == KEY_MOUSE_2)
 	{
 		if(Event.m_Flags & IInput::FLAG_PRESS)
 		{
-			const int Gate = GateAt(CursorPos(), 12.0f);
+			const int Gate = GateAt(CursorPos(), 12.0f * GameClient()->m_Camera.m_Zoom);
 			if(Gate >= 0)
 				DeleteGate(Gate);
 		}
@@ -675,7 +801,9 @@ void CSplits::OnRender()
 	if(Client()->State() != IClient::STATE_ONLINE || !HasMap())
 		return;
 	RenderGates();
-	RenderHud();
+	if(!GameClient()->m_HudEditor.IsActive())
+		RenderHudBox(false);
+	RenderEditHelp();
 }
 
 void CSplits::RenderGates()
@@ -684,10 +812,11 @@ void CSplits::RenderGates()
 		return;
 
 	const vec2 Center = GameClient()->m_Camera.m_Center;
-	Graphics()->MapScreenToInterface(Center.x, Center.y, GameClient()->m_Camera.m_Zoom);
+	const float Zoom = GameClient()->m_Camera.m_Zoom;
+	Graphics()->MapScreenToInterface(Center.x, Center.y, Zoom);
 
 	const vec2 Cursor = SnapPos(CursorPos());
-	const int Hovered = m_EditMode && m_DragMode == DRAG_NONE ? GateAt(CursorPos(), 12.0f) : -1;
+	const int Hovered = m_EditMode && m_DragMode == DRAG_NONE ? GateAt(CursorPos(), 12.0f * Zoom) : -1;
 
 	auto &&DrawLine = [&](vec2 A, vec2 B, float Width, ColorRGBA Color) {
 		const vec2 Dir = B - A;
@@ -706,6 +835,9 @@ void CSplits::RenderGates()
 	const ColorRGBA GateColor(0.3f, 0.85f, 1.0f, 0.8f);
 	const ColorRGBA HoverColor(1.0f, 0.35f, 0.35f, 0.9f);
 	const ColorRGBA DragColor(1.0f, 0.85f, 0.2f, 0.9f);
+	// keep lines and handles the same size on screen when zooming
+	const float LineWidth = 4.0f * std::max(Zoom, 1.0f);
+	const float HandleSize = 8.0f * std::max(Zoom, 1.0f);
 
 	Graphics()->TextureClear();
 	Graphics()->QuadsBegin();
@@ -722,92 +854,180 @@ void CSplits::RenderGates()
 			else if(m_DragMode == DRAG_END_B)
 				B = Cursor;
 		}
-		DrawLine(A, B, 4.0f, Color);
+		DrawLine(A, B, LineWidth, Color);
 		if(m_EditMode)
 		{
-			DrawDot(A, 8.0f, ColorRGBA(1.0f, 1.0f, 1.0f, 0.9f));
-			DrawDot(B, 8.0f, ColorRGBA(1.0f, 1.0f, 1.0f, 0.9f));
+			DrawDot(A, HandleSize, ColorRGBA(1.0f, 1.0f, 1.0f, 0.9f));
+			DrawDot(B, HandleSize, ColorRGBA(1.0f, 1.0f, 1.0f, 0.9f));
 		}
 	}
 	if(m_DragMode == DRAG_NEW)
-		DrawLine(m_DragStart, Cursor, 4.0f, DragColor);
+		DrawLine(m_DragStart, Cursor, LineWidth, DragColor);
 	if(m_EditMode)
-		DrawDot(Cursor, 6.0f, DragColor);
+	{
+		// crosshair
+		const float Size = 10.0f * Zoom;
+		DrawLine(Cursor - vec2(Size, 0.0f), Cursor + vec2(Size, 0.0f), 2.0f * Zoom, DragColor);
+		DrawLine(Cursor - vec2(0.0f, Size), Cursor + vec2(0.0f, Size), 2.0f * Zoom, DragColor);
+	}
 	Graphics()->QuadsEnd();
 
 	// names above the middle of each checkpoint
 	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.9f);
+	const float FontSize = 14.0f * std::max(Zoom, 1.0f);
 	for(const SGate &Gate : m_Data.m_vGates)
 	{
 		const std::string Name = PointName(GatePoint(Gate.m_Id));
-		const float FontSize = 14.0f;
 		const vec2 Middle((Gate.m_Ax + Gate.m_Bx) / 2.0f, (Gate.m_Ay + Gate.m_By) / 2.0f);
 		const float Width = TextRender()->TextWidth(FontSize, Name.c_str());
-		TextRender()->Text(Middle.x - Width / 2.0f, Middle.y - 28.0f, FontSize, Name.c_str());
+		TextRender()->Text(Middle.x - Width / 2.0f, Middle.y - FontSize * 2.0f, FontSize, Name.c_str());
 	}
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }
 
-void CSplits::RenderHud()
+void CSplits::RenderEditHelp()
 {
+	if(!m_EditMode)
+		return;
 	const float Height = 300.0f;
 	const float Width = Height * Graphics()->ScreenAspect();
 	Graphics()->MapScreen(CScreenRect(0.0f, 0.0f, Width, Height));
-
 	auto &&DrawCentered = [&](float Y, float FontSize, const char *pText, ColorRGBA Color) {
 		TextRender()->TextColor(Color);
 		TextRender()->Text(Width / 2.0f - TextRender()->TextWidth(FontSize, pText) / 2.0f, Y, FontSize, pText);
 	};
+	DrawCentered(75.0f, 7.0f, DtLocalize("Checkpoint edit mode: drag to create · drag an end to move · right click deletes · Esc exits"), ColorRGBA(1.0f, 0.85f, 0.2f, 1.0f));
+	DrawCentered(84.0f, 6.0f, DtLocalize("Mouse wheel zooms, hold the middle button to move the view. Shift places without snapping."), ColorRGBA(1.0f, 1.0f, 1.0f, 0.7f));
+	TextRender()->TextColor(TextRender()->DefaultTextColor());
+}
 
-	float Y = 48.0f;
-	if(g_Config.m_DtSplitsHud && g_Config.m_ClShowhud && time_get() < m_HudShowUntil && !m_HudSegment.empty())
+// --- HUD box (a BestClient HUD layout module, like the finish prediction) ---
+
+bool CSplits::HudLines(SHudLines &Lines, bool Preview) const
+{
+	if(Preview)
 	{
-		const float FontSize = 8.0f;
-		char aTime[32], aDiff[32], aLine[256];
-		FormatMillis(m_HudMillis, aTime, sizeof(aTime));
-		str_format(aLine, sizeof(aLine), "%s: %s", m_HudSegment.c_str(), aTime);
-		if(m_HudHasDiff)
-		{
-			FormatDiff(m_HudDiff, aDiff, sizeof(aDiff));
-			// time in white, difference in green/red right after it
-			char aDiffPart[40];
-			str_format(aDiffPart, sizeof(aDiffPart), "  %s", aDiff);
-			const float LineWidth = TextRender()->TextWidth(FontSize, aLine);
-			const float DiffWidth = TextRender()->TextWidth(FontSize, aDiffPart);
-			const float X = Width / 2.0f - (LineWidth + DiffWidth) / 2.0f;
-			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
-			TextRender()->Text(X, Y, FontSize, aLine);
-			if(m_HudDiff <= 0)
-				TextRender()->TextColor(0.5f, 1.0f, 0.5f, 1.0f);
-			else
-				TextRender()->TextColor(1.0f, 0.5f, 0.5f, 1.0f);
-			TextRender()->Text(X + LineWidth, Y, FontSize, aDiffPart);
-		}
-		else
-		{
-			DrawCentered(Y, FontSize, aLine, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
-		}
-		Y += 11.0f;
+		Lines.m_ShowDiff = true;
+		Lines.m_Diff = -20;
+		Lines.m_Prediction = 598200;
+		Lines.m_Unlikely = g_Config.m_DtSplitsWarning != 0;
+		return true;
+	}
+	if(!g_Config.m_DtSplits || !g_Config.m_DtSplitsHud || !g_Config.m_ClShowhud || !GameClient()->m_GameInfo.m_Race)
+		return false;
+	Lines.m_ShowDiff = m_HudHasDiff && time_get() < m_HudDiffUntil;
+	Lines.m_Diff = m_HudDiff;
+	Lines.m_Prediction = m_HudPrediction;
+	Lines.m_Unlikely = m_HudUnlikely && g_Config.m_DtSplitsWarning != 0;
+	return Lines.m_ShowDiff || Lines.m_Prediction >= 0;
+}
 
-		if(m_HudPrediction >= 0)
-		{
-			FormatMillis(m_HudPrediction, aTime, sizeof(aTime));
-			str_format(aLine, sizeof(aLine), DtLocalize("Prediction: %s"), aTime);
-			DrawCentered(Y, FontSize, aLine, m_HudUnlikely ? ColorRGBA(1.0f, 0.5f, 0.5f, 1.0f) : ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
-			Y += 11.0f;
-		}
-		if(m_HudUnlikely)
-		{
-			DrawCentered(Y, 9.0f, DtLocalize("Rank 1 unlikely."), ColorRGBA(1.0f, 0.35f, 0.35f, 1.0f));
-			Y += 12.0f;
-		}
+CUIRect CSplits::HudRect(const SHudLines &Lines, float HudWidth, float HudHeight) const
+{
+	const auto Layout = HudLayout::Get(HudLayout::MODULE_DDNETTY_SPLITS, HudWidth, HudHeight);
+	const float Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
+	const float DiffFontSize = 6.5f * Scale;
+	const float LineFontSize = 5.25f * Scale;
+	const float PaddingX = 6.0f * Scale;
+	const float PaddingY = 4.0f * Scale;
+	const float Gap = 1.5f * Scale;
+
+	char aSample[96];
+	str_format(aSample, sizeof(aSample), DtLocalize("Prediction: %s"), "00:00.00");
+	float Width = std::max(TextRender()->TextWidth(DiffFontSize, "+00.00"), TextRender()->TextWidth(LineFontSize, aSample));
+	float Height = 0.0f;
+	int NumLines = 0;
+	if(Lines.m_ShowDiff)
+	{
+		Height += DiffFontSize;
+		NumLines++;
+	}
+	if(Lines.m_Prediction >= 0)
+	{
+		Height += LineFontSize;
+		NumLines++;
+	}
+	if(Lines.m_Unlikely)
+	{
+		Width = std::max(Width, TextRender()->TextWidth(LineFontSize, WarningMessage()));
+		Height += LineFontSize;
+		NumLines++;
+	}
+	if(NumLines > 1)
+		Height += Gap * (NumLines - 1);
+
+	CUIRect Rect = {Layout.m_X, Layout.m_Y, Width + PaddingX * 2.0f, Height + PaddingY * 2.0f};
+	Rect.x = std::clamp(Rect.x, 0.0f, std::max(0.0f, HudWidth - Rect.w));
+	Rect.y = std::clamp(Rect.y, 0.0f, std::max(0.0f, HudHeight - Rect.h));
+	return Rect;
+}
+
+CUIRect CSplits::GetHudEditorRect() const
+{
+	SHudLines Lines;
+	HudLines(Lines, true);
+	const float HudHeight = HudLayout::CANVAS_HEIGHT;
+	const float HudWidth = HudHeight * Graphics()->ScreenAspect();
+	return HudRect(Lines, HudWidth, HudHeight);
+}
+
+void CSplits::RenderHudPreview()
+{
+	RenderHudBox(true);
+}
+
+void CSplits::RenderHudBox(bool Preview)
+{
+	if(!Preview && !HudLayout::IsEnabled(HudLayout::MODULE_DDNETTY_SPLITS))
+		return;
+	SHudLines Lines;
+	if(!HudLines(Lines, Preview))
+		return;
+
+	const float HudHeight = HudLayout::CANVAS_HEIGHT;
+	const float HudWidth = HudHeight * Graphics()->ScreenAspect();
+	Graphics()->MapScreenToSize(HudWidth, HudHeight);
+
+	const CUIRect Rect = HudRect(Lines, HudWidth, HudHeight);
+	const auto Layout = HudLayout::Get(HudLayout::MODULE_DDNETTY_SPLITS, HudWidth, HudHeight);
+	const float Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
+	const float Alpha = HudLayout::AlphaFactor(HudLayout::MODULE_DDNETTY_SPLITS);
+	const float DiffFontSize = 6.5f * Scale;
+	const float LineFontSize = 5.25f * Scale;
+	const float PaddingY = 4.0f * Scale;
+	const float Gap = 1.5f * Scale;
+
+	if(Layout.m_BackgroundEnabled)
+	{
+		const ColorRGBA Background = color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true)).WithMultipliedAlpha(Alpha);
+		const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, Rect.x, Rect.y, Rect.w, Rect.h, HudWidth, HudHeight);
+		Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, Background, Corners, 5.0f * Scale);
 	}
 
-	if(m_EditMode)
+	auto &&DrawCentered = [&](float Y, float FontSize, const char *pText, ColorRGBA Color) {
+		TextRender()->TextColor(Color.WithMultipliedAlpha(Alpha));
+		TextRender()->Text(Rect.x + (Rect.w - TextRender()->TextWidth(FontSize, pText)) / 2.0f, Y, FontSize, pText);
+	};
+
+	const ColorRGBA Green(0.5f, 1.0f, 0.5f, 1.0f);
+	const ColorRGBA Red(1.0f, 0.5f, 0.5f, 1.0f);
+	float Y = Rect.y + PaddingY;
+	char aBuf[128], aTime[32];
+	if(Lines.m_ShowDiff)
 	{
-		Y = std::max(Y, 75.0f);
-		DrawCentered(Y, 7.0f, DtLocalize("Checkpoint edit mode: drag to create · drag an end to move · right click deletes · Esc exits"), ColorRGBA(1.0f, 0.85f, 0.2f, 1.0f));
-		DrawCentered(Y + 9.0f, 6.0f, DtLocalize("Hold Shift to place without snapping. Moving or deleting a checkpoint resets its times."), ColorRGBA(1.0f, 1.0f, 1.0f, 0.7f));
+		FormatDiff(Lines.m_Diff, aBuf, sizeof(aBuf));
+		DrawCentered(Y, DiffFontSize, aBuf, Lines.m_Diff <= 0 ? Green : Red);
+		Y += DiffFontSize + Gap;
 	}
+	if(Lines.m_Prediction >= 0)
+	{
+		FormatMillis(Lines.m_Prediction, aTime, sizeof(aTime));
+		str_format(aBuf, sizeof(aBuf), DtLocalize("Prediction: %s"), aTime);
+		const bool Slower = Preview ? Lines.m_Unlikely : m_HudUnlikely;
+		DrawCentered(Y, LineFontSize, aBuf, Slower ? Red : ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+		Y += LineFontSize + Gap;
+	}
+	if(Lines.m_Unlikely)
+		DrawCentered(Y, LineFontSize, WarningMessage(), ColorRGBA(1.0f, 0.35f, 0.35f, 1.0f));
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }

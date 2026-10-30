@@ -18,3 +18,6 @@ MACRO_CONFIG_INT(DtSplitsSource, dt_splits_source, 0, 0, 2, CFGFLAG_CLIENT | CFG
 MACRO_CONFIG_INT(DtSplitsAverage, dt_splits_average, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Compare against the average of your last attempts instead of your best")
 MACRO_CONFIG_INT(DtSplitsPractice, dt_splits_practice, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Include practice attempts in the split stats")
 MACRO_CONFIG_INT(DtSplitsShowGates, dt_splits_show_gates, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show your split checkpoints on the map")
+MACRO_CONFIG_INT(DtSplitsTargetMode, dt_splits_target_mode, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target time for the prediction (0 = server record, 1 = your best, 2 = custom time per map)")
+MACRO_CONFIG_INT(DtSplitsWarning, dt_splits_warning, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show a message when the prediction is slower than the target time")
+MACRO_CONFIG_STR(DtSplitsMessage, dt_splits_message, 64, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Message shown when the prediction is slower than the target time (empty = default)")

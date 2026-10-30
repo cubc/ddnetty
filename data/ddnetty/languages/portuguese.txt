@@ -176,10 +176,6 @@ Finished
 == Terminadas
 
 [DDNetty]
-Hold Shift to place without snapping. Moving or deleting a checkpoint resets its times.
-== Segure Shift pra posicionar sem encaixar. Mover ou apagar um checkpoint zera os tempos dele.
-
-[DDNetty]
 Last
 == Última
 
@@ -238,10 +234,6 @@ Real
 [DDNetty]
 Record splits
 == Gravar splits
-
-[DDNetty]
-Record: %s   Your best: %s   Built run: %s   Possible gain: %s
-== Recorde: %s   Seu PB: %s   Run montada: %s   Dá pra ganhar: %s
 
 [DDNetty]
 Rename
@@ -330,3 +322,33 @@ practice
 [DDNetty]
 real
 == real
+
+# Splits v2
+
+[DDNetty]
+Custom
+== Personalizado
+
+[DDNetty]
+Mouse wheel zooms, hold the middle button to move the view. Shift places without snapping.
+== Roda do mouse dá zoom, segure o botão do meio pra mover a visão. Shift posiciona sem encaixar.
+
+[DDNetty]
+My best
+== Meu PB
+
+[DDNetty]
+Server record
+== Recorde do servidor
+
+[DDNetty]
+Target time:
+== Tempo-alvo:
+
+[DDNetty]
+Target: %s   Your best: %s   Built run: %s   Possible gain: %s
+== Alvo: %s   Seu PB: %s   Run montada: %s   Dá pra ganhar: %s
+
+[DDNetty]
+Warn when slower than target
+== Avisar quando passar do alvo

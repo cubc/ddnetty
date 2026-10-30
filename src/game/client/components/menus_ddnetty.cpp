@@ -174,15 +174,15 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 	int PlayerBest = Splits.PlayerBestMillis();
 	if(PlayerBest < 0)
 		PlayerBest = Analysis.m_BestFinished;
-	char aRecord[32], aBest[32], aBuilt[32], aGain[32], aLine[256];
-	CSplits::FormatMillis(Splits.RecordMillis(), aRecord, sizeof(aRecord));
+	char aTarget[32], aBest[32], aBuilt[32], aGain[32], aLine[256];
+	CSplits::FormatMillis(Splits.TargetMillis(), aTarget, sizeof(aTarget));
 	CSplits::FormatMillis(PlayerBest, aBest, sizeof(aBest));
 	CSplits::FormatMillis(Analysis.m_BuiltRun, aBuilt, sizeof(aBuilt));
 	if(PlayerBest >= 0 && Analysis.m_BuiltRun >= 0 && PlayerBest > Analysis.m_BuiltRun)
 		CSplits::FormatMillis(PlayerBest - Analysis.m_BuiltRun, aGain, sizeof(aGain));
 	else
 		str_copy(aGain, "—");
-	str_format(aLine, sizeof(aLine), DtLocalize("Record: %s   Your best: %s   Built run: %s   Possible gain: %s"), aRecord, aBest, aBuilt, aGain);
+	str_format(aLine, sizeof(aLine), DtLocalize("Target: %s   Your best: %s   Built run: %s   Possible gain: %s"), aTarget, aBest, aBuilt, aGain);
 	MainView.HSplitTop(LineSize, &Label, &MainView);
 	Ui()->DoLabel(&Label, aLine, FontSize, TEXTALIGN_ML);
 	if(Analysis.m_BuiltRun < 0)
@@ -247,6 +247,57 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 	Row.VSplitLeft(280.0f, &Button, &Row);
 	if(DoButton_CheckBox(&s_GatesCheckbox, DtLocalize("Show my checkpoints on the map"), g_Config.m_DtSplitsShowGates, &Button))
 		g_Config.m_DtSplitsShowGates ^= 1;
+
+	// target time for the prediction
+	MainView.HSplitTop(Spacing, nullptr, &MainView);
+	MainView.HSplitTop(LineSize, &Row, &MainView);
+	Row.VSplitLeft(115.0f, &Label, &Row);
+	Ui()->DoLabel(&Label, DtLocalize("Target time:"), FontSize, TEXTALIGN_ML);
+	static CButtonContainer s_aTargetButtons[3];
+	const char *apTargets[] = {DtLocalize("Server record"), DtLocalize("My best"), DtLocalize("Custom")};
+	g_Config.m_DtSplitsTargetMode = DoChoices(&Row, s_aTargetButtons, apTargets, 3, g_Config.m_DtSplitsTargetMode, 120.0f);
+	if(g_Config.m_DtSplitsTargetMode == 2)
+	{
+		// custom time for this map, saved with its splits
+		static CLineInputBuffered<16> s_TargetInput;
+		static int s_TargetShown = -2;
+		if(s_TargetShown != Splits.CustomTarget() && !s_TargetInput.IsActive())
+		{
+			char aTime[32] = "";
+			if(Splits.CustomTarget() > 0)
+				CSplits::FormatMillis(Splits.CustomTarget(), aTime, sizeof(aTime));
+			s_TargetInput.Set(aTime);
+			s_TargetShown = Splits.CustomTarget();
+		}
+		Row.VSplitLeft(5.0f, nullptr, &Row);
+		Row.VSplitLeft(90.0f, &Button, &Row);
+		s_TargetInput.SetEmptyText("9:41.02");
+		if(Ui()->DoEditBox(&s_TargetInput, &Button, FontSize))
+		{
+			const int Millis = CSplits::ParseTime(s_TargetInput.GetString());
+			if(Millis > 0 || s_TargetInput.IsEmpty())
+			{
+				Splits.SetCustomTarget(Millis);
+				s_TargetShown = Splits.CustomTarget();
+			}
+		}
+	}
+
+	// message when the prediction is slower than the target
+	MainView.HSplitTop(Spacing, nullptr, &MainView);
+	MainView.HSplitTop(LineSize, &Row, &MainView);
+	static int s_WarningCheckbox;
+	Row.VSplitLeft(200.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_WarningCheckbox, DtLocalize("Warn when slower than target"), g_Config.m_DtSplitsWarning, &Button))
+		g_Config.m_DtSplitsWarning ^= 1;
+	if(g_Config.m_DtSplitsWarning)
+	{
+		static CLineInput s_MessageInput(g_Config.m_DtSplitsMessage, sizeof(g_Config.m_DtSplitsMessage));
+		s_MessageInput.SetEmptyText(DtLocalize("Rank 1 unlikely."));
+		Row.VSplitLeft(5.0f, nullptr, &Row);
+		Row.VSplitLeft(250.0f, &Button, &Row);
+		Ui()->DoEditBox(&s_MessageInput, &Button, FontSize);
+	}
 
 	// views
 	MainView.HSplitTop(Spacing * 2.0f, nullptr, &MainView);

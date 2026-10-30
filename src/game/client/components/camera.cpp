@@ -438,6 +438,8 @@ void CCamera::OnRender()
 	if(m_CameraSmoothing)
 		m_Center = m_CameraSmoothingCenter;
 
+	GameClient()->m_Splits.ApplyEditCamera(m_Center); // ddnetty: free camera while editing split checkpoints
+
 	m_PrevCenter = m_Center;
 	m_PrevSpecId = SpecId;
 
