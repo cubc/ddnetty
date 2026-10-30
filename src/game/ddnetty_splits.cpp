@@ -122,9 +122,9 @@ namespace DdnettySplits
 		return nullptr;
 	}
 
-	int SAnalysis::RouteIndex(int Point) const
+	int SAnalysis::RouteIndex(int Point, int FromIndex) const
 	{
-		for(size_t i = 0; i < m_vRoute.size(); i++)
+		for(size_t i = std::max(FromIndex, 0); i < m_vRoute.size(); i++)
 			if(m_vRoute[i] == Point)
 				return (int)i;
 		return -1;
@@ -134,6 +134,7 @@ namespace DdnettySplits
 	{
 		m_vGates.clear();
 		m_vAttempts.clear();
+		m_TargetMillis = -1;
 	}
 
 	bool CSplitsData::ParseLine(const char *pLine)
@@ -144,6 +145,15 @@ namespace DdnettySplits
 			return true; // empty line or comment
 
 		std::string aTokens[6];
+		if(Kind == "target")
+		{
+			std::string Token;
+			long long Millis;
+			if(!NextToken(pStr, Token) || !ParseInt(Token, Millis) || Millis < -1 || Millis > 24LL * 60 * 60 * 1000)
+				return false;
+			m_TargetMillis = Millis > 0 ? (int)Millis : -1;
+			return true;
+		}
 		if(Kind == "gate")
 		{
 			for(int i = 0; i < 5; i++)
@@ -212,6 +222,8 @@ namespace DdnettySplits
 	std::string CSplitsData::Serialize() const
 	{
 		std::string Result = "# ddnetty splits v1\n";
+		if(m_TargetMillis > 0)
+			Result += "target " + std::to_string(m_TargetMillis) + "\n";
 		for(const SGate &Gate : m_vGates)
 			Result += FormatGate(Gate) + "\n";
 		for(const SAttempt &Attempt : m_vAttempts)
@@ -438,15 +450,12 @@ namespace DdnettySplits
 		return Analysis;
 	}
 
-	int CSplitsData::Remaining(const SAnalysis &Analysis, int Point, const SOptions &Options)
+	int CSplitsData::Remaining(const SAnalysis &Analysis, int RouteIndex, const SOptions &Options)
 	{
-		if(!Analysis.m_RouteComplete)
-			return -1;
-		const int Index = Analysis.RouteIndex(Point);
-		if(Index < 0)
+		if(!Analysis.m_RouteComplete || RouteIndex < 0 || RouteIndex >= (int)Analysis.m_vRoute.size())
 			return -1;
 		int Sum = 0;
-		for(size_t i = Index; i < Analysis.m_vRouteStats.size(); i++)
+		for(size_t i = RouteIndex; i < Analysis.m_vRouteStats.size(); i++)
 		{
 			const int Ref = Reference(Analysis.m_vRouteStats[i], Options);
 			if(Ref < 0)

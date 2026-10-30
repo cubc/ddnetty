@@ -9,6 +9,7 @@
 #include <engine/console.h>
 
 #include <game/client/component.h>
+#include <game/client/ui_rect.h>
 #include <game/ddnetty_splits.h>
 
 #include <string>
@@ -25,6 +26,7 @@ public:
 	void OnMessage(int MsgType, void *pRawMsg) override;
 	void OnRender() override;
 	bool OnInput(const IInput::CEvent &Event) override;
+	bool OnCursorMove(float x, float y, IInput::ECursorType CursorType) override;
 
 	// used by the DDNetty menu page
 	bool HasMap() const { return m_aPath[0] != '\0'; }
@@ -35,14 +37,25 @@ public:
 	void DeleteSegment(int From, int To);
 	void DeleteGate(int GateId);
 	void RenameGate(int GateId, const char *pName);
+	void SetCustomTarget(int Millis); // -1 clears it
+	int CustomTarget() const { return m_Data.m_TargetMillis; }
 	void SetEditMode(bool EditMode);
 	bool EditMode() const { return m_EditMode; }
 	std::string PointName(int Point) const;
-	int RecordMillis() const; // map record, -1 if unknown
+	int RecordMillis() const; // map record from the server, -1 if unknown
 	int PlayerBestMillis() const; // personal best from the server, -1 if unknown
+	int TargetMillis() const; // the time the prediction is compared with, -1 if unknown
+	const char *WarningMessage() const;
+
+	// used by other components
+	bool HidesServerTimeCpDiff() const;
+	void ApplyEditCamera(vec2 &Center) const;
+	CUIRect GetHudEditorRect() const;
+	void RenderHudPreview();
 
 	static void FormatMillis(int Millis, char *pBuf, int BufSize); // 1:02.34 / 12.34
 	static void FormatDiff(int Millis, char *pBuf, int BufSize); // +0.31 / -1.20
+	static int ParseTime(const char *pStr); // "9:41.02" / "41.5" -> millis, -1 if invalid
 
 private:
 	DdnettySplits::CSplitsData m_Data;
@@ -60,15 +73,14 @@ private:
 	double m_LastPointTick = 0.0;
 	int m_LastUsedPoint = DdnettySplits::POINT_NONE; // last point used by the current options (for the HUD)
 	double m_LastUsedPointTick = 0.0;
+	int m_RouteIndex = -1; // where on the route the run is, -1 if unknown
 	double m_StartTick = -1.0; // when the start line was left, -1 if unknown
 	int m_InTimecp = -1;
 	bool m_InStart = false;
 	bool m_InFinish = false;
 
-	// HUD after each split
-	int64_t m_HudShowUntil = 0;
-	std::string m_HudSegment;
-	int m_HudMillis = -1;
+	// HUD
+	int64_t m_HudDiffUntil = 0;
 	int m_HudDiff = 0;
 	bool m_HudHasDiff = false;
 	int m_HudPrediction = -1;
@@ -86,6 +98,9 @@ private:
 	int m_DragMode = DRAG_NONE;
 	int m_DragGate = -1;
 	vec2 m_DragStart = vec2(0.0f, 0.0f);
+	bool m_Panning = false;
+	vec2 m_EditCameraOffset = vec2(0.0f, 0.0f); // added to the normal camera center
+	vec2 m_EditCursor = vec2(0.0f, 0.0f); // relative to the camera center, in world units
 
 	void Load();
 	void Save();
@@ -95,6 +110,7 @@ private:
 	void OnPoint(int Point, double Tick);
 	bool IsPractice() const;
 
+	vec2 VisibleHalfSize() const;
 	vec2 CursorPos() const;
 	vec2 SnapPos(vec2 Pos) const;
 	int GateAt(vec2 Pos, float MaxDistance) const;
@@ -103,7 +119,17 @@ private:
 	void GatesChanged();
 
 	void RenderGates();
-	void RenderHud();
+	void RenderEditHelp();
+	struct SHudLines
+	{
+		bool m_ShowDiff = false;
+		int m_Diff = 0;
+		int m_Prediction = -1;
+		bool m_Unlikely = false;
+	};
+	bool HudLines(SHudLines &Lines, bool Preview) const;
+	CUIRect HudRect(const SHudLines &Lines, float HudWidth, float HudHeight) const;
+	void RenderHudBox(bool Preview);
 
 	static void ConEdit(IConsole::IResult *pResult, void *pUserData);
 };
