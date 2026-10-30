@@ -87,6 +87,7 @@
 #include "components/emoticon.h"
 #include "components/flow.h"
 #include "components/freezebars.h"
+#include "components/ddnetty/splits.h" // ddnetty
 #include "components/ghost.h"
 #include "components/hud.h"
 #include "components/important_alert.h"
@@ -317,6 +318,7 @@ public:
 
 	CRaceDemo m_RaceDemo;
 	CGhost m_Ghost;
+	CSplits m_Splits; // ddnetty
 
 	CTooltips m_Tooltips;
 
