@@ -32,6 +32,13 @@ const char *BcLocalize(const char *pStr)
 }
 // bestclient
 
+// ddnetty
+const char *DtLocalize(const char *pStr)
+{
+	const char *pNewStr = g_Localization.FindString(str_quickhash(pStr), str_quickhash("DDNetty"));
+	return pNewStr ? pNewStr : Localize(pStr);
+}
+
 void CLocalizationDatabase::LoadIndexfile(IStorage *pStorage, IConsole *pConsole)
 {
 	m_vLanguages.clear();

@@ -780,11 +780,17 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 		Box.VSplitLeft(100.0f, &Button, &Box);
 		Box.VSplitLeft(4.0f, nullptr, &Box);
 		static CButtonContainer s_CallVoteButton;
-		if(DoButton_MenuTab(&s_CallVoteButton, Localize("Call vote"), ActivePage == PAGE_CALLVOTE, &Button, IGraphics::CORNER_TR))
+		if(DoButton_MenuTab(&s_CallVoteButton, Localize("Call vote"), ActivePage == PAGE_CALLVOTE, &Button, IGraphics::CORNER_NONE))
 		{
 			NewPage = PAGE_CALLVOTE;
 			m_ControlPageOpening = true;
 		}
+
+		// ddnetty: last tab on the right
+		Box.VSplitLeft(100.0f, &Button, &Box);
+		static CButtonContainer s_DDNettyButton;
+		if(DoButton_MenuTab(&s_DDNettyButton, "DDNetty", ActivePage == PAGE_DDNETTY, &Button, IGraphics::CORNER_TR))
+			NewPage = PAGE_DDNETTY;
 
 		if(Box.w >= 10.0f + 33.0f + 10.0f)
 		{
@@ -1292,6 +1298,10 @@ void CMenus::Render()
 			else if(m_GamePage == PAGE_GHOST)
 			{
 				RenderGhost(MainView);
+			}
+			else if(m_GamePage == PAGE_DDNETTY) // ddnetty
+			{
+				RenderDDNetty(MainView);
 			}
 			else if(m_GamePage == PAGE_CALLVOTE)
 			{
