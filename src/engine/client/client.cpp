@@ -413,7 +413,7 @@ void CClient::SendInput()
 
 			// pack input
 			CMsgPacker Msg(NETMSG_INPUT, true);
-			Msg.AddInt(m_aAckGameTick[i]);
+			Msg.AddInt(FakePingAckTick(i, Now)); // ddnetty: normally m_aAckGameTick[i]
 			Msg.AddInt(m_aPredTick[g_Config.m_ClDummy]);
 			Msg.AddInt(Size);
 
@@ -450,6 +450,54 @@ void CClient::SendInput()
 				Force = true;
 		}
 	}
+}
+
+// ddnetty: fake ping
+//
+// The server measures our ping per input as "time it received the input" minus
+// "time it created the snapshot that input acknowledges". So instead of acking the
+// newest snapshot, we ack one we received a bit earlier. The server still has it
+// (it keeps everything from our last ack on) and so do we (we keep everything from
+// the server's delta base on), so snapshots keep flowing normally. The input itself
+// is untouched: same predicted tick, sent at the same time, so gameplay is not delayed.
+// Only the ping the server measures (and shows on the scoreboard) goes up.
+int CClient::FakePingAckTick(int Conn, int64_t Now)
+{
+	const int RealAck = m_aAckGameTick[Conn];
+	int AckTick = RealAck;
+
+	if(g_Config.m_DtFakePing > 0 && RealAck >= 0)
+	{
+		// The scoreboard shows at most 999, so for 999 aim a bit above it to absorb jitter.
+		const int TargetMs = g_Config.m_DtFakePing >= 999 ? 1100 : g_Config.m_DtFakePing;
+		const int64_t Rtt = std::max<int64_t>(m_aFakePingRtt[Conn], 0);
+		const int64_t Offset = (int64_t)TargetMs * time_freq() / 1000 - Rtt;
+
+		if(Offset > 0)
+		{
+			// newest snapshot we received at least `Offset` ago
+			int Candidate = -1;
+			for(const CSnapshotStorage::CHolder *pHolder = m_aSnapshotStorage[Conn].m_pLast; pHolder; pHolder = pHolder->m_pPrev)
+			{
+				if(pHolder->m_Tick <= RealAck && Now - pHolder->m_Tagtime >= Offset)
+				{
+					Candidate = pHolder->m_Tick;
+					break;
+				}
+			}
+
+			// Never ack an older snapshot than last time: the server may already have dropped it.
+			// While nothing is old enough, keep acking the last one, so the ping ramps up smoothly.
+			const int LastSent = m_aFakePingLastSentAck[Conn];
+			if(LastSent >= 0 && LastSent <= RealAck)
+				AckTick = std::max(Candidate, LastSent);
+			else if(Candidate >= 0)
+				AckTick = Candidate;
+		}
+	}
+
+	m_aFakePingLastSentAck[Conn] = AckTick;
+	return AckTick;
 }
 
 const char *CClient::LatestVersion() const
@@ -544,6 +592,8 @@ void CClient::OnEnterGame(bool Dummy)
 
 	// reset times
 	m_aAckGameTick[Dummy] = -1;
+	m_aFakePingLastSentAck[Dummy] = -1; // ddnetty
+	m_aFakePingRtt[Dummy] = -1; // ddnetty
 	m_aCurrentRecvTick[Dummy] = 0;
 	m_aPrevGameTick[Dummy] = 0;
 	m_aCurGameTick[Dummy] = 0;
@@ -2196,6 +2246,15 @@ void CClient::ProcessServerPacket(CNetChunk *pPacket, int Conn, bool Dummy)
 			{
 				if(m_aInputs[Conn][k].m_Tick == InputPredTick)
 				{
+					// ddnetty: real round trip (input sent -> timing reply), used by fake ping
+					{
+						const int64_t Sample = Now - m_aInputs[Conn][k].m_Time;
+						int64_t &Rtt = m_aFakePingRtt[Conn];
+						if(Rtt < 0 || Sample < Rtt)
+							Rtt = Sample;
+						else
+							Rtt += (Sample - Rtt) / 50;
+					}
 					Target = m_aInputs[Conn][k].m_PredictedTime + (Now - m_aInputs[Conn][k].m_Time);
 					if(g_Config.m_TcSmoothPredictionMargin)
 						Target = Target - (int64_t)((TimeLeft / 1000.0f) * time_freq()) + m_aInputs[Conn][k].m_PredictionMargin;

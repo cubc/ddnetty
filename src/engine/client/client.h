@@ -112,6 +112,9 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	bool m_EditorActive = false;
 
 	int m_aAckGameTick[NUM_DUMMIES] = {-1, -1};
+	// ddnetty: fake ping
+	int m_aFakePingLastSentAck[NUM_DUMMIES] = {-1, -1};
+	int64_t m_aFakePingRtt[NUM_DUMMIES] = {-1, -1}; // estimated real round trip, in time_freq() units
 	int m_aCurrentRecvTick[NUM_DUMMIES] = {0, 0};
 	int m_aRconAuthed[NUM_DUMMIES] = {0, 0};
 	char m_aRconUsername[64] = "";
@@ -326,6 +329,7 @@ public:
 	IGraphics::CTextureHandle GetDebugFont() const override { return m_DebugFont; }
 
 	void SendInput();
+	int FakePingAckTick(int Conn, int64_t Now); // ddnetty
 
 	// TODO: OPT: do this a lot smarter!
 	int *GetInput(int Tick, int IsDummy) const override;
