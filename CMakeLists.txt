@@ -2694,6 +2694,8 @@ set_src(GAME_SHARED GLOB src/game
   alloc.h
   collision.cpp
   collision.h
+  ddnetty_splits.cpp
+  ddnetty_splits.h
   gamecore.cpp
   gamecore.h
   layers.cpp
@@ -3110,6 +3112,8 @@ if(CLIENT)
     components/countryflags.h
     components/damageind.cpp
     components/damageind.h
+    components/ddnetty/splits.cpp
+    components/ddnetty/splits.h
     components/debughud.cpp
     components/debughud.h
     components/effects.cpp
@@ -4017,6 +4021,7 @@ if((GTEST_FOUND OR DOWNLOAD_GTEST) AND SERVER)
     csv_test.cpp
     datafile_test.cpp
     dbg_test.cpp
+    ddnetty_splits_test.cpp
     demo_tee_edit_test.cpp
     demo_tee_selection_test.cpp
     editor_test.cpp

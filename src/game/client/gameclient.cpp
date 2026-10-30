@@ -181,6 +181,7 @@ void CGameClient::OnConsoleInit()
 					      // bestclient
 					      &m_Particles.m_RenderExplosions,
 					      &m_NamePlates,
+					      &m_Splits, // ddnetty
 					      &m_GifBubbles, // bestclient
 					      &m_ChatBubbles, // bestclient
 					      &m_PhysicBalls, // bestclient
@@ -257,6 +258,7 @@ void CGameClient::OnConsoleInit()
 						  &m_Emoticon,
 						  &m_ImportantAlert,
 						  &m_AdminPanel, // bestclient
+						  &m_Splits, // ddnetty: edit mode takes the mouse buttons and Esc (ignores input while the menu is open)
 						  &m_Menus,
 						  &m_Controls,
 						  &m_TouchControls,
