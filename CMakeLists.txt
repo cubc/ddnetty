@@ -1777,6 +1777,8 @@ set(EXPECTED_DATA
   countryflags/ZW.png
   countryflags/default.png
   countryflags/index.txt
+  ddnetty/languages/brazilian_portuguese.txt
+  ddnetty/languages/portuguese.txt
   deadtee.png
   debug_font.png
   editor/audio_source.png
@@ -3147,6 +3149,7 @@ if(CLIENT)
     components/menus.cpp
     components/menus.h
     components/menus_browser.cpp
+    components/menus_ddnetty.cpp
     components/menus_demo.cpp
     components/menus_ingame.cpp
     components/menus_ingame_touch_controls.cpp

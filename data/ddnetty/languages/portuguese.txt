@@ -1,0 +1,62 @@
+# DDNetty translations (Portuguese).
+# Each entry: [DDNetty] context line, the English text, then "== " and the translation.
+
+[DDNetty]
+General
+== Geral
+
+[DDNetty]
+Fake ping
+== Ping falso
+
+[DDNetty]
+Enable fake ping
+== Ativar ping falso
+
+[DDNetty]
+Ping others see
+== Ping que os outros veem
+
+[DDNetty]
+Real ping: %d ms
+== Ping real: %d ms
+
+[DDNetty]
+Real ping: unknown
+== Ping real: desconhecido
+
+[DDNetty]
+Scoreboard: %d ms
+== No placar: %d ms
+
+[DDNetty]
+Scoreboard: unknown
+== No placar: desconhecido
+
+[DDNetty]
+Fake ping only raises your ping, it can't lower it.
+== O ping falso só aumenta seu ping, não diminui.
+
+[DDNetty]
+Console
+== Console
+
+[DDNetty]
+Ctrl+Shift+C copies the whole console
+== Ctrl+Shift+C copia o console inteiro
+
+[DDNetty]
+Copy console
+== Copiar console
+
+[DDNetty]
+Save console to file
+== Salvar console em arquivo
+
+[DDNetty]
+Open console folder
+== Abrir pasta dos consoles
+
+[DDNetty]
+Saved consoles folder:
+== Pasta dos consoles salvos:

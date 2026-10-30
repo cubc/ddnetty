@@ -378,6 +378,10 @@ void CGameClient::InitializeLanguage()
 	str_format(aBuf, sizeof(aBuf), "BestClient/%s", g_Config.m_ClLanguagefile);
 	g_Localization.Load(aBuf, Storage(), Console(), false);
 	// bestclient
+
+	// ddnetty
+	str_format(aBuf, sizeof(aBuf), "ddnetty/%s", g_Config.m_ClLanguagefile);
+	g_Localization.Load(aBuf, Storage(), Console(), false);
 }
 
 void CGameClient::ForceUpdateConsoleRemoteCompletionSuggestions()
@@ -1585,6 +1589,10 @@ void CGameClient::HandleLanguageChanged()
 	str_format(aBuf, sizeof(aBuf), "BestClient/%s", g_Config.m_ClLanguagefile);
 	g_Localization.Load(aBuf, Storage(), Console(), false);
 	// bestclient
+
+	// ddnetty
+	str_format(aBuf, sizeof(aBuf), "ddnetty/%s", g_Config.m_ClLanguagefile);
+	g_Localization.Load(aBuf, Storage(), Console(), false);
 
 	TextRender()->SetFontLanguageVariant(g_Config.m_ClLanguagefile);
 

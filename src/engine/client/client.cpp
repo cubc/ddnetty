@@ -383,6 +383,13 @@ bool CClient::ConnectionProblems() const
 	return m_aNetClient[g_Config.m_ClDummy].GotProblems(MaxLatencyTicks() * time_freq() / GameTickSpeed());
 }
 
+// ddnetty
+int CClient::RealPingMs() const
+{
+	const int64_t Rtt = m_aFakePingRtt[g_Config.m_ClDummy];
+	return Rtt < 0 ? -1 : (int)(Rtt * 1000 / time_freq());
+}
+
 void CClient::SendInput()
 {
 	int64_t Now = time_get();
