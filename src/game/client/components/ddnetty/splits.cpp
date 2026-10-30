@@ -67,6 +67,23 @@ namespace
 void CSplits::OnConsoleInit()
 {
 	Console()->Register("dt_splits_edit", "", CFGFLAG_CLIENT, ConEdit, this, "Toggle the edit mode for your split checkpoints");
+	Console()->Register("dt_splits_source_cycle", "", CFGFLAG_CLIENT, ConSourceCycle, this, "Cycle the split points: map time checkpoints + yours, only map time checkpoints, only yours");
+	Console()->Register("dt_splits_delete_all_checkpoints", "", CFGFLAG_CLIENT, ConDeleteAllGates, this, "Delete all your checkpoints on this map and the times that came from them");
+}
+
+void CSplits::ConSourceCycle(IConsole::IResult *pResult, void *pUserData)
+{
+	CSplits *pSelf = static_cast<CSplits *>(pUserData);
+	g_Config.m_DtSplitsSource = (g_Config.m_DtSplitsSource + 1) % 3;
+	const char *apNames[] = {DtLocalize("Split points: map + mine"), DtLocalize("Split points: map time checkpoints"), DtLocalize("Split points: my checkpoints")};
+	pSelf->m_Notice = apNames[g_Config.m_DtSplitsSource];
+	pSelf->m_NoticeUntil = time_get() + 2 * time_freq();
+	pSelf->ResetRun();
+}
+
+void CSplits::ConDeleteAllGates(IConsole::IResult *pResult, void *pUserData)
+{
+	static_cast<CSplits *>(pUserData)->DeleteAllGates();
 }
 
 void CSplits::ConEdit(IConsole::IResult *pResult, void *pUserData)
@@ -565,7 +582,18 @@ void CSplits::DeleteSegment(int From, int To)
 
 void CSplits::DeleteGate(int GateId)
 {
+	if(m_RenamingGate == GateId)
+		StopRenaming(false);
 	m_Data.DeleteGate(GateId);
+	m_PendingDeleteGate = -1;
+	GatesChanged();
+}
+
+void CSplits::DeleteAllGates()
+{
+	StopRenaming(false);
+	m_Data.DeleteAllGates();
+	m_PendingDeleteGate = -1;
 	GatesChanged();
 }
 
@@ -606,7 +634,21 @@ void CSplits::SetEditMode(bool EditMode)
 		m_EditCursor = GameClient()->m_Controls.m_aTargetPos[g_Config.m_ClDummy] - GameClient()->m_Camera.m_Center;
 	}
 	if(!m_EditMode)
+	{
 		m_EditCameraOffset = vec2(0.0f, 0.0f);
+		StopRenaming(false);
+		m_PendingDeleteGate = -1;
+	}
+}
+
+void CSplits::StopRenaming(bool Save)
+{
+	if(m_RenamingGate < 0)
+		return;
+	if(Save)
+		RenameGate(m_RenamingGate, m_RenameInput.GetString());
+	m_RenameInput.Deactivate();
+	m_RenamingGate = -1;
 }
 
 vec2 CSplits::VisibleHalfSize() const
@@ -754,6 +796,30 @@ bool CSplits::OnInput(const IInput::CEvent &Event)
 	if(GameClient()->m_Menus.IsActive() || GameClient()->m_GameConsole.IsActive() || GameClient()->m_Chat.IsActive())
 		return false;
 
+	if(m_RenamingGate >= 0)
+	{
+		// typing a checkpoint name: the keyboard belongs to the text box
+		if(Event.m_Flags & IInput::FLAG_PRESS)
+		{
+			if(Event.m_Key == KEY_RETURN || Event.m_Key == KEY_KP_ENTER)
+			{
+				StopRenaming(true);
+				return true;
+			}
+			if(Event.m_Key == KEY_ESCAPE)
+			{
+				StopRenaming(false);
+				return true;
+			}
+		}
+		if(Event.m_Key != KEY_MOUSE_1 && Event.m_Key != KEY_MOUSE_2 && Event.m_Key != KEY_MOUSE_3)
+		{
+			m_RenameInput.ProcessInput(Event);
+			return true;
+		}
+		StopRenaming(true); // clicking somewhere else saves
+	}
+
 	if(Event.m_Key == KEY_ESCAPE && (Event.m_Flags & IInput::FLAG_PRESS))
 	{
 		SetEditMode(false);
@@ -762,7 +828,25 @@ bool CSplits::OnInput(const IInput::CEvent &Event)
 	if(Event.m_Key == KEY_MOUSE_1)
 	{
 		if(Event.m_Flags & IInput::FLAG_PRESS)
+		{
+			// double click on a checkpoint renames it
+			const int Gate = GateAt(CursorPos(), 12.0f * GameClient()->m_Camera.m_Zoom);
+			const int64_t Now = time_get();
+			if(Gate >= 0 && Gate == m_LastClickGate && Now - m_LastClickTime < time_freq() * 35 / 100)
+			{
+				m_DragMode = DRAG_NONE;
+				m_LastClickGate = -1;
+				const SGate *pGate = m_Data.FindGate(Gate);
+				m_RenameInput.Set(pGate ? pGate->m_Name.c_str() : "");
+				m_RenameInput.SelectAll();
+				m_RenameInput.Activate(EInputPriority::CHAT);
+				m_RenamingGate = Gate;
+				return true;
+			}
+			m_LastClickGate = Gate;
+			m_LastClickTime = Now;
 			BeginDrag();
+		}
 		if((Event.m_Flags & IInput::FLAG_RELEASE) && m_DragMode != DRAG_NONE)
 			EndDrag();
 		return true;
@@ -787,7 +871,17 @@ bool CSplits::OnInput(const IInput::CEvent &Event)
 		{
 			const int Gate = GateAt(CursorPos(), 12.0f * GameClient()->m_Camera.m_Zoom);
 			if(Gate >= 0)
-				DeleteGate(Gate);
+			{
+				// the last checkpoint takes its times with it, so that needs a second right click
+				const bool NeedsConfirm = m_Data.GateDeleteCount(Gate) > 0;
+				if(!NeedsConfirm || (m_PendingDeleteGate == Gate && time_get() < m_PendingDeleteUntil))
+					DeleteGate(Gate);
+				else
+				{
+					m_PendingDeleteGate = Gate;
+					m_PendingDeleteUntil = time_get() + 3 * time_freq();
+				}
+			}
 		}
 		return true;
 	}
@@ -804,6 +898,45 @@ void CSplits::OnRender()
 	if(!GameClient()->m_HudEditor.IsActive())
 		RenderHudBox(false);
 	RenderEditHelp();
+	RenderRenameBox();
+}
+
+vec2 CSplits::WorldToHud(vec2 Pos, float HudWidth, float HudHeight) const
+{
+	const vec2 Half = VisibleHalfSize();
+	const vec2 TopLeft = GameClient()->m_Camera.m_Center - Half;
+	return vec2((Pos.x - TopLeft.x) / (Half.x * 2.0f) * HudWidth, (Pos.y - TopLeft.y) / (Half.y * 2.0f) * HudHeight);
+}
+
+void CSplits::RenderRenameBox()
+{
+	if(m_RenamingGate < 0)
+		return;
+	const SGate *pGate = m_Data.FindGate(m_RenamingGate);
+	if(!pGate)
+	{
+		StopRenaming(false);
+		return;
+	}
+	const float Height = 300.0f;
+	const float Width = Height * Graphics()->ScreenAspect();
+	Graphics()->MapScreen(CScreenRect(0.0f, 0.0f, Width, Height));
+
+	const vec2 Middle = WorldToHud(vec2((pGate->m_Ax + pGate->m_Bx) / 2.0f, (pGate->m_Ay + pGate->m_By) / 2.0f), Width, Height);
+	const float FontSize = 7.0f;
+	CUIRect Box = {Middle.x - 50.0f, Middle.y - 22.0f, 100.0f, 11.0f};
+	Box.x = std::clamp(Box.x, 2.0f, Width - Box.w - 2.0f);
+	Box.y = std::clamp(Box.y, 2.0f, Height - Box.h - 2.0f);
+	Box.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.75f), IGraphics::CORNER_ALL, 2.0f);
+	CUIRect TextRect;
+	Box.Margin(2.0f, &TextRect);
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	m_RenameInput.Render(&TextRect, FontSize, TEXTALIGN_ML, true, -1.0f, 0.0f);
+
+	const char *pHint = DtLocalize("Enter saves · Esc cancels");
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.7f);
+	TextRender()->Text(Box.x + (Box.w - TextRender()->TextWidth(5.0f, pHint)) / 2.0f, Box.y + Box.h + 1.0f, 5.0f, pHint);
+	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }
 
 void CSplits::RenderGates()
@@ -845,7 +978,8 @@ void CSplits::RenderGates()
 	{
 		vec2 A(Gate.m_Ax, Gate.m_Ay);
 		vec2 B(Gate.m_Bx, Gate.m_By);
-		ColorRGBA Color = Gate.m_Id == Hovered ? HoverColor : GateColor;
+		const bool PendingDelete = Gate.m_Id == m_PendingDeleteGate && time_get() < m_PendingDeleteUntil;
+		ColorRGBA Color = Gate.m_Id == Hovered || PendingDelete ? HoverColor : GateColor;
 		if(Gate.m_Id == m_DragGate)
 		{
 			Color = DragColor;
@@ -887,7 +1021,8 @@ void CSplits::RenderGates()
 
 void CSplits::RenderEditHelp()
 {
-	if(!m_EditMode)
+	const bool ShowNotice = time_get() < m_NoticeUntil && !m_Notice.empty();
+	if(!m_EditMode && !ShowNotice)
 		return;
 	const float Height = 300.0f;
 	const float Width = Height * Graphics()->ScreenAspect();
@@ -896,8 +1031,19 @@ void CSplits::RenderEditHelp()
 		TextRender()->TextColor(Color);
 		TextRender()->Text(Width / 2.0f - TextRender()->TextWidth(FontSize, pText) / 2.0f, Y, FontSize, pText);
 	};
-	DrawCentered(75.0f, 7.0f, DtLocalize("Checkpoint edit mode: drag to create · drag an end to move · right click deletes · Esc exits"), ColorRGBA(1.0f, 0.85f, 0.2f, 1.0f));
-	DrawCentered(84.0f, 6.0f, DtLocalize("Mouse wheel zooms, hold the middle button to move the view. Shift places without snapping."), ColorRGBA(1.0f, 1.0f, 1.0f, 0.7f));
+	if(ShowNotice)
+		DrawCentered(100.0f, 8.0f, m_Notice.c_str(), ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+	if(m_EditMode)
+	{
+		DrawCentered(75.0f, 7.0f, DtLocalize("Checkpoint edit mode: drag to create · drag an end to move · double click renames · right click deletes · Esc exits"), ColorRGBA(1.0f, 0.85f, 0.2f, 1.0f));
+		DrawCentered(84.0f, 6.0f, DtLocalize("Mouse wheel zooms, hold the middle button to move the view. Shift places without snapping."), ColorRGBA(1.0f, 1.0f, 1.0f, 0.7f));
+		if(m_PendingDeleteGate >= 0 && time_get() < m_PendingDeleteUntil)
+		{
+			char aBuf[160];
+			str_format(aBuf, sizeof(aBuf), DtLocalize("Right click again: deletes your last checkpoint and %d times that came from your checkpoints"), m_Data.GateDeleteCount(m_PendingDeleteGate));
+			DrawCentered(110.0f, 7.0f, aBuf, ColorRGBA(1.0f, 0.4f, 0.4f, 1.0f));
+		}
+	}
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }
 
@@ -911,6 +1057,7 @@ bool CSplits::HudLines(SHudLines &Lines, bool Preview) const
 		Lines.m_Diff = -20;
 		Lines.m_Prediction = 598200;
 		Lines.m_Unlikely = g_Config.m_DtSplitsWarning != 0;
+		Lines.m_Ideal = g_Config.m_DtSplitsHudIdeal ? 592100 : -1;
 		return true;
 	}
 	if(!g_Config.m_DtSplits || !g_Config.m_DtSplitsHud || !g_Config.m_ClShowhud || !GameClient()->m_GameInfo.m_Race)
@@ -919,6 +1066,8 @@ bool CSplits::HudLines(SHudLines &Lines, bool Preview) const
 	Lines.m_Diff = m_HudDiff;
 	Lines.m_Prediction = m_HudPrediction;
 	Lines.m_Unlikely = m_HudUnlikely && g_Config.m_DtSplitsWarning != 0;
+	if(g_Config.m_DtSplitsHudIdeal && (Lines.m_ShowDiff || Lines.m_Prediction >= 0))
+		Lines.m_Ideal = m_Analysis.m_BuiltRun;
 	return Lines.m_ShowDiff || Lines.m_Prediction >= 0;
 }
 
@@ -943,6 +1092,11 @@ CUIRect CSplits::HudRect(const SHudLines &Lines, float HudWidth, float HudHeight
 		NumLines++;
 	}
 	if(Lines.m_Prediction >= 0)
+	{
+		Height += LineFontSize;
+		NumLines++;
+	}
+	if(Lines.m_Ideal >= 0)
 	{
 		Height += LineFontSize;
 		NumLines++;
@@ -1025,6 +1179,13 @@ void CSplits::RenderHudBox(bool Preview)
 		str_format(aBuf, sizeof(aBuf), DtLocalize("Prediction: %s"), aTime);
 		const bool Slower = Preview ? Lines.m_Unlikely : m_HudUnlikely;
 		DrawCentered(Y, LineFontSize, aBuf, Slower ? Red : ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+		Y += LineFontSize + Gap;
+	}
+	if(Lines.m_Ideal >= 0)
+	{
+		FormatMillis(Lines.m_Ideal, aTime, sizeof(aTime));
+		str_format(aBuf, sizeof(aBuf), DtLocalize("Ideal: %s"), aTime);
+		DrawCentered(Y, LineFontSize, aBuf, ColorRGBA(0.75f, 0.85f, 1.0f, 1.0f));
 		Y += LineFontSize + Gap;
 	}
 	if(Lines.m_Unlikely)

@@ -92,10 +92,6 @@ Best
 == Melhor
 
 [DDNetty]
-Checkpoint edit mode: drag to create · drag an end to move · right click deletes · Esc exits
-== Modo edição de checkpoints: arraste pra criar · arraste uma ponta pra mover · botão direito apaga · Esc sai
-
-[DDNetty]
 Checkpoints
 == Checkpoints
 
@@ -110,10 +106,6 @@ Clear segment
 [DDNetty]
 Click "Edit checkpoints" and drag with the mouse to draw one across the path.
 == Clique em "Editar checkpoints" e arraste com o mouse pra desenhar um atravessando o caminho.
-
-[DDNetty]
-Click a checkpoint to rename or delete it.
-== Clique num checkpoint pra renomear ou apagar.
 
 [DDNetty]
 Closes the menu. Drag with the mouse to draw a checkpoint across the path, right click deletes, Esc exits.
@@ -284,14 +276,6 @@ Start
 == Início
 
 [DDNetty]
-The built run needs at least one attempt of every segment.
-== A run montada precisa de pelo menos uma tentativa de cada trecho.
-
-[DDNetty]
-The built run needs one complete run from start to finish.
-== A run montada precisa de uma run completa do início ao fim.
-
-[DDNetty]
 Time
 == Tempo
 
@@ -346,9 +330,187 @@ Target time:
 == Tempo-alvo:
 
 [DDNetty]
-Target: %s   Your best: %s   Built run: %s   Possible gain: %s
-== Alvo: %s   Seu PB: %s   Run montada: %s   Dá pra ganhar: %s
-
-[DDNetty]
 Warn when slower than target
 == Avisar quando passar do alvo
+
+# Splits v3
+
+[DDNetty]
+%s · %d real · %d practice
+== %s · %d reais · %d practice
+
+[DDNetty]
+- - ideal run
+== - - run ideal
+
+[DDNetty]
+30 days ago
+== 30 dias atrás
+
+[DDNetty]
+Activity (attempts per day, last 30 days)
+== Atividade (tentativas por dia, últimos 30 dias)
+
+[DDNetty]
+Analysis
+== Análise
+
+[DDNetty]
+BestClient marks DDNetty as FAKE because it isn't an official build. Off: nobody sees any icon on you, and you may stop seeing theirs.
+== O BestClient marca o DDNetty como FAKE porque não é um build oficial. Desligado: ninguém vê ícone em você, e você pode deixar de ver o dos outros.
+
+[DDNetty]
+Checkpoint edit mode: drag to create · drag an end to move · double click renames · right click deletes · Esc exits
+== Modo edição de checkpoints: arraste pra criar · arraste uma ponta pra mover · clique duplo renomeia · botão direito apaga · Esc sai
+
+[DDNetty]
+Click a bar above to see a segment here.
+== Clique numa barra acima pra ver um trecho aqui.
+
+[DDNetty]
+Click a checkpoint to rename or delete it. Double click on the map renames too.
+== Clique num checkpoint pra renomear ou apagar. Clique duplo no mapa também renomeia.
+
+[DDNetty]
+Delete %s? It's your last checkpoint, so the %d times that came from your checkpoints are deleted too.
+== Apagar %s? É seu último checkpoint, então os %d tempos que vieram dos seus checkpoints também são apagados.
+
+[DDNetty]
+Delete all %d checkpoints and the %d times that came from them? Times from the map's time checkpoints stay.
+== Apagar os %d checkpoints e os %d tempos que vieram deles? Os tempos dos timecps do mapa ficam.
+
+[DDNetty]
+Delete all checkpoints
+== Apagar todos os checkpoints
+
+[DDNetty]
+Enter saves · Esc cancels
+== Enter salva · Esc cancela
+
+[DDNetty]
+Finish the map once to see your runs here.
+== Termine o mapa uma vez pra ver suas runs aqui.
+
+[DDNetty]
+Finished runs / attempts
+== Runs completas / tentativas
+
+[DDNetty]
+History of a segment
+== Histórico de um trecho
+
+[DDNetty]
+History: %s
+== Histórico: %s
+
+[DDNetty]
+Ideal run
+== Run ideal
+
+[DDNetty]
+Ideal run on the HUD
+== Run ideal no HUD
+
+[DDNetty]
+Ideal: %s
+== Ideal: %s
+
+[DDNetty]
+Include practice
+== Incluir practice
+
+[DDNetty]
+Least consistent segment
+== Trecho menos consistente
+
+[DDNetty]
+Needs a few attempts of each segment.
+== Precisa de algumas tentativas de cada trecho.
+
+[DDNetty]
+Possible gain
+== Dá pra ganhar
+
+[DDNetty]
+Right click again: deletes your last checkpoint and %d times that came from your checkpoints
+== Clique direito de novo: apaga seu último checkpoint e %d tempos que vieram dos seus checkpoints
+
+[DDNetty]
+Run evolution
+== Evolução das runs
+
+[DDNetty]
+Show up for BestClient users
+== Aparecer pro BestClient
+
+[DDNetty]
+Split points: map + mine
+== Pontos de divisão: mapa + meus
+
+[DDNetty]
+Split points: map time checkpoints
+== Pontos de divisão: timecps do mapa
+
+[DDNetty]
+Split points: my checkpoints
+== Pontos de divisão: meus checkpoints
+
+[DDNetty]
+Target: %s   Your best: %s   Ideal run: %s   Possible gain: %s
+== Alvo: %s   Seu PB: %s   Run ideal: %s   Dá pra ganhar: %s
+
+[DDNetty]
+The ideal run needs at least one attempt of every segment.
+== A run ideal precisa de pelo menos uma tentativa de cada trecho.
+
+[DDNetty]
+The ideal run needs one complete run from start to finish.
+== A run ideal precisa de uma run completa do início ao fim.
+
+[DDNetty]
+Time practicing
+== Tempo treinando
+
+[DDNetty]
+Where you lose time (your average − your best)
+== Onde você perde tempo (sua média − seu melhor)
+
+[DDNetty]
+Your best
+== Seu PB
+
+[DDNetty]
+best %s · average %s · click to see the history
+== melhor %s · média %s · clique pra ver o histórico
+
+[DDNetty]
+today
+== hoje
+
+[DDNetty]
+— average of the last 10
+== — média das últimas 10
+
+[DDNetty]
+— target
+== — alvo
+
+[DDNetty]
+— your best
+== — seu PB
+
+[DDNetty]
+● attempt
+== ● tentativa
+
+[DDNetty]
+● new best
+== ● novo melhor
+
+[DDNetty]
+● practice
+== ● practice
+
+[DDNetty]
+● run
+== ● run

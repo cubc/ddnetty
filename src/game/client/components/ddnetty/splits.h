@@ -9,6 +9,7 @@
 #include <engine/console.h>
 
 #include <game/client/component.h>
+#include <game/client/lineinput.h>
 #include <game/client/ui_rect.h>
 #include <game/ddnetty_splits.h>
 
@@ -36,6 +37,7 @@ public:
 	void DeleteRuns(const std::vector<int> &vRunIds);
 	void DeleteSegment(int From, int To);
 	void DeleteGate(int GateId);
+	void DeleteAllGates();
 	void RenameGate(int GateId, const char *pName);
 	void SetCustomTarget(int Millis); // -1 clears it
 	int CustomTarget() const { return m_Data.m_TargetMillis; }
@@ -99,6 +101,17 @@ private:
 	int m_DragGate = -1;
 	vec2 m_DragStart = vec2(0.0f, 0.0f);
 	bool m_Panning = false;
+	// double click renames a checkpoint right on the map
+	int64_t m_LastClickTime = 0;
+	int m_LastClickGate = -1;
+	int m_RenamingGate = -1;
+	CLineInputBuffered<33> m_RenameInput;
+	// deleting the last checkpoint removes its times, so it needs a second right click
+	int m_PendingDeleteGate = -1;
+	int64_t m_PendingDeleteUntil = 0;
+	// short message in the middle of the screen (e.g. after cycling the split points)
+	std::string m_Notice;
+	int64_t m_NoticeUntil = 0;
 	vec2 m_EditCameraOffset = vec2(0.0f, 0.0f); // added to the normal camera center
 	vec2 m_EditCursor = vec2(0.0f, 0.0f); // relative to the camera center, in world units
 
@@ -120,18 +133,24 @@ private:
 
 	void RenderGates();
 	void RenderEditHelp();
+	void RenderRenameBox();
+	void StopRenaming(bool Save);
+	vec2 WorldToHud(vec2 Pos, float HudWidth, float HudHeight) const;
 	struct SHudLines
 	{
 		bool m_ShowDiff = false;
 		int m_Diff = 0;
 		int m_Prediction = -1;
 		bool m_Unlikely = false;
+		int m_Ideal = -1;
 	};
 	bool HudLines(SHudLines &Lines, bool Preview) const;
 	CUIRect HudRect(const SHudLines &Lines, float HudWidth, float HudHeight) const;
 	void RenderHudBox(bool Preview);
 
 	static void ConEdit(IConsole::IResult *pResult, void *pUserData);
+	static void ConSourceCycle(IConsole::IResult *pResult, void *pUserData);
+	static void ConDeleteAllGates(IConsole::IResult *pResult, void *pUserData);
 };
 
 #endif // GAME_CLIENT_COMPONENTS_DDNETTY_SPLITS_H

@@ -195,6 +195,9 @@ namespace DdnettySplits
 			Attempt.m_Timestamp = Timestamp;
 			Attempt.m_Practice = Practice != 0;
 			Attempt.m_Millis = (int)Millis;
+			std::string Flags;
+			if(NextToken(pStr, Flags))
+				Attempt.m_FromGate = Flags.find('g') != std::string::npos;
 			m_vAttempts.push_back(Attempt);
 			return true;
 		}
@@ -216,7 +219,10 @@ namespace DdnettySplits
 		char aBuf[128];
 		std::snprintf(aBuf, sizeof(aBuf), "att %d %lld %d %s %s %d", Attempt.m_RunId, (long long)Attempt.m_Timestamp, Attempt.m_Practice ? 1 : 0,
 			PointToString(Attempt.m_From).c_str(), PointToString(Attempt.m_To).c_str(), Attempt.m_Millis);
-		return aBuf;
+		std::string Line = aBuf;
+		if(Attempt.m_FromGate)
+			Line += " g";
+		return Line;
 	}
 
 	std::string CSplitsData::Serialize() const
@@ -533,6 +539,7 @@ namespace DdnettySplits
 					Merged.m_To = Next.m_To;
 					Merged.m_Millis += Next.m_Millis;
 					Merged.m_Practice = Merged.m_Practice || Next.m_Practice;
+					Merged.m_FromGate = true;
 					if(Merged.m_From != Merged.m_To)
 						vKept.push_back(Merged);
 					i++;
@@ -549,8 +556,146 @@ namespace DdnettySplits
 
 	void CSplitsData::DeleteGate(int GateId)
 	{
+		if(m_vGates.size() == 1 && m_vGates[0].m_Id == GateId)
+		{
+			DeleteAllGates();
+			return;
+		}
 		ForgetPoint(GatePoint(GateId));
 		m_vGates.erase(std::remove_if(m_vGates.begin(), m_vGates.end(), [&](const SGate &Gate) { return Gate.m_Id == GateId; }), m_vGates.end());
+	}
+
+	namespace
+	{
+		bool CameFromGates(const SAttempt &Attempt)
+		{
+			return Attempt.m_FromGate || IsGate(Attempt.m_From) || IsGate(Attempt.m_To);
+		}
+	} // namespace
+
+	void CSplitsData::DeleteAllGates()
+	{
+		m_vAttempts.erase(std::remove_if(m_vAttempts.begin(), m_vAttempts.end(), CameFromGates), m_vAttempts.end());
+		m_vGates.clear();
+		SplitRunsAtGaps();
+	}
+
+	int CSplitsData::GateDeleteCount(int GateId) const
+	{
+		if(m_vGates.size() == 1 && m_vGates[0].m_Id == GateId)
+			return AllGatesDeleteCount();
+		return 0;
+	}
+
+	int CSplitsData::AllGatesDeleteCount() const
+	{
+		return (int)std::count_if(m_vAttempts.begin(), m_vAttempts.end(), CameFromGates);
+	}
+
+	std::vector<CSplitsData::SRunPoint> CSplitsData::FinishedRuns(bool IncludePractice) const
+	{
+		std::vector<SRunPoint> vResult;
+		for(const SRun &Run : Runs())
+		{
+			if(!Run.Finished() || (Run.m_Practice && !IncludePractice))
+				continue;
+			SRunPoint Point;
+			Point.m_Timestamp = Run.m_Timestamp;
+			Point.m_Millis = Run.m_Millis;
+			Point.m_Practice = Run.m_Practice;
+			vResult.push_back(Point);
+		}
+		std::stable_sort(vResult.begin(), vResult.end(), [](const SRunPoint &A, const SRunPoint &B) { return A.m_Timestamp < B.m_Timestamp; });
+		return vResult;
+	}
+
+	std::vector<CSplitsData::SSegmentLoss> CSplitsData::Losses(const SAnalysis &Analysis)
+	{
+		std::vector<SSegmentLoss> vResult;
+		for(const SSegmentStats &Stats : Analysis.m_vRouteStats)
+		{
+			if(Stats.m_Count <= 0)
+				continue;
+			SSegmentLoss Loss;
+			Loss.m_From = Stats.m_From;
+			Loss.m_To = Stats.m_To;
+			Loss.m_Best = Stats.m_Best;
+			Loss.m_Mean = Stats.m_Mean;
+			Loss.m_Loss = std::max(0, Stats.m_Mean - Stats.m_Best);
+			vResult.push_back(Loss);
+		}
+		std::stable_sort(vResult.begin(), vResult.end(), [](const SSegmentLoss &A, const SSegmentLoss &B) { return A.m_Loss > B.m_Loss; });
+		return vResult;
+	}
+
+	std::vector<CSplitsData::SHistoryPoint> CSplitsData::SegmentHistory(const SAnalysis &Analysis, int From, int To)
+	{
+		std::vector<SHistoryPoint> vResult;
+		int Best = INT_MAX;
+		for(const SEffectiveAttempt &Effective : Analysis.m_vAttempts)
+		{
+			const SAttempt &Attempt = Effective.m_Attempt;
+			if(Attempt.m_From != From || Attempt.m_To != To)
+				continue;
+			SHistoryPoint Point;
+			Point.m_Timestamp = Attempt.m_Timestamp;
+			Point.m_Millis = Attempt.m_Millis;
+			Point.m_Practice = Attempt.m_Practice;
+			Point.m_NewBest = Attempt.m_Millis < Best;
+			Best = std::min(Best, Attempt.m_Millis);
+			vResult.push_back(Point);
+
+			const size_t Start = vResult.size() > (size_t)AVERAGE_WINDOW ? vResult.size() - AVERAGE_WINDOW : 0;
+			long long Sum = 0;
+			for(size_t i = Start; i < vResult.size(); i++)
+				Sum += vResult[i].m_Millis;
+			vResult.back().m_MovingAverage = (int)(Sum / (long long)(vResult.size() - Start));
+		}
+		return vResult;
+	}
+
+	std::vector<CSplitsData::SDayActivity> CSplitsData::Activity(int64_t Now, int64_t UtcOffsetSeconds, int NumDays) const
+	{
+		std::vector<SDayActivity> vResult(std::max(NumDays, 0));
+		if(vResult.empty())
+			return vResult;
+		auto &&DayOf = [&](int64_t Timestamp) {
+			const int64_t Local = Timestamp + UtcOffsetSeconds;
+			return Local >= 0 ? Local / 86400 : (Local - 86399) / 86400;
+		};
+		const int64_t Today = DayOf(Now);
+		for(const SAttempt &Attempt : m_vAttempts)
+		{
+			const int64_t Ago = Today - DayOf(Attempt.m_Timestamp);
+			if(Ago < 0 || Ago >= NumDays)
+				continue;
+			SDayActivity &Day = vResult[NumDays - 1 - Ago];
+			if(Attempt.m_Practice)
+				Day.m_Practice++;
+			else
+				Day.m_Real++;
+		}
+		return vResult;
+	}
+
+	CSplitsData::SSummary CSplitsData::Summarize(const SAnalysis &Analysis, bool IncludePractice) const
+	{
+		SSummary Summary;
+		Summary.m_FinishedRuns = (int)FinishedRuns(IncludePractice).size();
+		Summary.m_Attempts = (int)Analysis.m_vAttempts.size();
+		for(const SAttempt &Attempt : m_vAttempts)
+			if(IncludePractice || !Attempt.m_Practice)
+				Summary.m_TotalMillis += Attempt.m_Millis;
+		for(const SSegmentStats &Stats : Analysis.m_vRouteStats)
+		{
+			if(Stats.m_Count >= 3 && Stats.m_StdDev > Summary.m_WorstStdDev)
+			{
+				Summary.m_WorstStdDev = Stats.m_StdDev;
+				Summary.m_WorstFrom = Stats.m_From;
+				Summary.m_WorstTo = Stats.m_To;
+			}
+		}
+		return Summary;
 	}
 
 	void CSplitsData::SplitRunsAtGaps()

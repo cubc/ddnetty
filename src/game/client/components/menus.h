@@ -1003,6 +1003,7 @@ private:
 		SPLITS_VIEW_SEGMENTS = 0,
 		SPLITS_VIEW_RUNS,
 		SPLITS_VIEW_GATES,
+		SPLITS_VIEW_ANALYSIS,
 		NUM_SPLITS_VIEWS,
 	};
 	enum
@@ -1011,6 +1012,7 @@ private:
 		SPLITS_DELETE_RUNS,
 		SPLITS_DELETE_SEGMENT,
 		SPLITS_DELETE_GATE,
+		SPLITS_DELETE_ALL_GATES,
 	};
 	int m_SplitsView = SPLITS_VIEW_SEGMENTS;
 	int m_SplitsRunsSort = 0; // 0 = most recent, 1 = fastest
@@ -1027,6 +1029,10 @@ private:
 	void RenderSplitsSegments(CUIRect View);
 	void RenderSplitsRuns(CUIRect View);
 	void RenderSplitsGates(CUIRect View);
+	void RenderSplitsAnalysis(CUIRect View);
+	int m_SplitsAnalysisSegmentFrom = -1; // segment shown in the history chart
+	int m_SplitsAnalysisSegmentTo = -1;
+	bool m_SplitsAnalysisPractice = true; // practice runs in the evolution chart
 	void PopupConfirmSplitsDelete();
 
 	// TClient: found in menus_tclient.cpp

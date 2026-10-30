@@ -21,3 +21,7 @@ MACRO_CONFIG_INT(DtSplitsShowGates, dt_splits_show_gates, 1, 0, 1, CFGFLAG_CLIEN
 MACRO_CONFIG_INT(DtSplitsTargetMode, dt_splits_target_mode, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target time for the prediction (0 = server record, 1 = your best, 2 = custom time per map)")
 MACRO_CONFIG_INT(DtSplitsWarning, dt_splits_warning, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show a message when the prediction is slower than the target time")
 MACRO_CONFIG_STR(DtSplitsMessage, dt_splits_message, 64, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Message shown when the prediction is slower than the target time (empty = default)")
+MACRO_CONFIG_INT(DtSplitsHudIdeal, dt_splits_hud_ideal, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show your ideal run (sum of your best segments) in the splits HUD box")
+
+// BestClient network
+MACRO_CONFIG_INT(DtBestClientPresence, dt_bestclient_presence, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Announce yourself to the BestClient indicator server (it marks DDNetty as FAKE since it is not an official BestClient build)")
