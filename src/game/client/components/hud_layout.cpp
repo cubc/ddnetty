@@ -48,6 +48,7 @@ static const SModuleLayout gs_aModuleLayouts[MODULE_COUNT] = {
 	{484.0f, 172.0f, 100, 0, true, true, 0x66000000U, 100},
 	{250.0f, 258.0f, 100, 0, true, true, 0x66000000U, 100},
 	{200.0f, 168.0f, 100, 0, true, true, 0xE6000033U, 100},
+	{0.0f, 108.0f, 100, 0, true, true, 0x66000000U, 100}, // ddnetty: splits, above the finish prediction
 };
 
 static const char *gs_apModuleIds[MODULE_COUNT] = {
@@ -75,6 +76,7 @@ static const char *gs_apModuleIds[MODULE_COUNT] = {
 	"dummy_actions",
 	"swap_timer",
 	"edge_info",
+	"ddnetty_splits",
 };
 
 static const char *gs_apModuleNames[MODULE_COUNT] = {
@@ -102,6 +104,7 @@ static const char *gs_apModuleNames[MODULE_COUNT] = {
 	"Dummy Actions",
 	"Swap timer",
 	"Edge Info",
+	"Splits",
 };
 
 static SModuleLayout gs_aRuntimeModuleLayouts[MODULE_COUNT];
@@ -489,6 +492,7 @@ bool IsEditorModule(EModule Module)
 	case MODULE_EDGE_INFO:
 	// bestclient
 	case MODULE_FINISH_PREDICTION:
+	case MODULE_DDNETTY_SPLITS: // ddnetty
 	case MODULE_KEYSTROKES_KEYBOARD:
 	case MODULE_KEYSTROKES_MOUSE:
 	// bestclient

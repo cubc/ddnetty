@@ -802,6 +802,7 @@ public:
 		PAGE_SETTINGS,
 		PAGE_NETWORK,
 		PAGE_GHOST,
+		PAGE_DDNETTY, // ddnetty
 
 		PAGE_LENGTH,
 	};
@@ -984,6 +985,55 @@ private:
 	// found in menus_ingame.cpp
 	void RenderInGameNetwork(CUIRect MainView);
 	void RenderGhost(CUIRect MainView);
+
+	// ddnetty
+	enum
+	{
+		DDNETTY_TAB_GENERAL = 0,
+		DDNETTY_TAB_SPLITS,
+		NUM_DDNETTY_TABS,
+	};
+	int m_DDNettyTab = DDNETTY_TAB_GENERAL;
+	void RenderDDNetty(CUIRect MainView);
+	void RenderDDNettyGeneral(CUIRect MainView);
+
+	// ddnetty: splits
+	enum
+	{
+		SPLITS_VIEW_SEGMENTS = 0,
+		SPLITS_VIEW_RUNS,
+		SPLITS_VIEW_GATES,
+		SPLITS_VIEW_ANALYSIS,
+		NUM_SPLITS_VIEWS,
+	};
+	enum
+	{
+		SPLITS_DELETE_NONE = 0,
+		SPLITS_DELETE_RUNS,
+		SPLITS_DELETE_SEGMENT,
+		SPLITS_DELETE_GATE,
+		SPLITS_DELETE_ALL_GATES,
+	};
+	int m_SplitsView = SPLITS_VIEW_SEGMENTS;
+	int m_SplitsRunsSort = 0; // 0 = most recent, 1 = fastest
+	int m_SplitsRunsPeriod = 3; // 0 = 24 hours, 1 = 7 days, 2 = 30 days, 3 = all
+	int m_SplitsRunsType = 0; // 0 = all, 1 = finished, 2 = practice, 3 = real
+	std::vector<int> m_vSplitsSelectedRuns;
+	int m_SplitsSelectedGate = -1;
+	int m_SplitsPendingDelete = SPLITS_DELETE_NONE;
+	std::vector<int> m_vSplitsPendingRuns;
+	int m_SplitsPendingFrom = -1;
+	int m_SplitsPendingTo = -1;
+	int m_SplitsPendingGate = -1;
+	void RenderDDNettySplits(CUIRect MainView);
+	void RenderSplitsSegments(CUIRect View);
+	void RenderSplitsRuns(CUIRect View);
+	void RenderSplitsGates(CUIRect View);
+	void RenderSplitsAnalysis(CUIRect View);
+	int m_SplitsAnalysisSegmentFrom = -1; // segment shown in the history chart
+	int m_SplitsAnalysisSegmentTo = -1;
+	bool m_SplitsAnalysisPractice = true; // practice runs in the evolution chart
+	void PopupConfirmSplitsDelete();
 
 	// TClient: found in menus_tclient.cpp
 	void RenderSettingsTClient(CUIRect MainView);

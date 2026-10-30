@@ -181,6 +181,7 @@ void CGameClient::OnConsoleInit()
 					      // bestclient
 					      &m_Particles.m_RenderExplosions,
 					      &m_NamePlates,
+					      &m_Splits, // ddnetty
 					      &m_GifBubbles, // bestclient
 					      &m_ChatBubbles, // bestclient
 					      &m_PhysicBalls, // bestclient
@@ -257,6 +258,7 @@ void CGameClient::OnConsoleInit()
 						  &m_Emoticon,
 						  &m_ImportantAlert,
 						  &m_AdminPanel, // bestclient
+						  &m_Splits, // ddnetty: edit mode takes the mouse buttons and Esc (ignores input while the menu is open)
 						  &m_Menus,
 						  &m_Controls,
 						  &m_TouchControls,
@@ -378,6 +380,10 @@ void CGameClient::InitializeLanguage()
 	str_format(aBuf, sizeof(aBuf), "BestClient/%s", g_Config.m_ClLanguagefile);
 	g_Localization.Load(aBuf, Storage(), Console(), false);
 	// bestclient
+
+	// ddnetty
+	str_format(aBuf, sizeof(aBuf), "ddnetty/%s", g_Config.m_ClLanguagefile);
+	g_Localization.Load(aBuf, Storage(), Console(), false);
 }
 
 void CGameClient::ForceUpdateConsoleRemoteCompletionSuggestions()
@@ -1585,6 +1591,10 @@ void CGameClient::HandleLanguageChanged()
 	str_format(aBuf, sizeof(aBuf), "BestClient/%s", g_Config.m_ClLanguagefile);
 	g_Localization.Load(aBuf, Storage(), Console(), false);
 	// bestclient
+
+	// ddnetty
+	str_format(aBuf, sizeof(aBuf), "ddnetty/%s", g_Config.m_ClLanguagefile);
+	g_Localization.Load(aBuf, Storage(), Console(), false);
 
 	TextRender()->SetFontLanguageVariant(g_Config.m_ClLanguagefile);
 

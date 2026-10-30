@@ -529,6 +529,10 @@ CHudEditor::SModuleVisual CHudEditor::GetModuleVisual(HudLayout::EModule Module)
 		Visual.m_Rect = GameClient()->m_FinishPrediction.GetHudEditorRect();
 		Visual.m_Rounding = 5.0f;
 		break;
+	case HudLayout::MODULE_DDNETTY_SPLITS: // ddnetty
+		Visual.m_Rect = GameClient()->m_Splits.GetHudEditorRect();
+		Visual.m_Rounding = 5.0f;
+		break;
 	case HudLayout::MODULE_KEYSTROKES_KEYBOARD:
 		Visual.m_Rect = GameClient()->m_Keystrokes.GetKeyboardHudEditorRect();
 		Visual.m_Rounding = 4.0f;
@@ -581,6 +585,7 @@ void CHudEditor::CollectModuleVisuals(SModuleVisual *pOut, int &Count) const
 	AddModule(HudLayout::MODULE_VOICE_STATUS);
 	AddModule(HudLayout::MODULE_EDGE_INFO);
 	AddModule(HudLayout::MODULE_FINISH_PREDICTION);
+	AddModule(HudLayout::MODULE_DDNETTY_SPLITS); // ddnetty
 	AddModule(HudLayout::MODULE_KEYSTROKES_KEYBOARD);
 	if(g_Config.m_BcKeystrokesStyle != 1)
 		AddModule(HudLayout::MODULE_KEYSTROKES_MOUSE);
@@ -1181,6 +1186,7 @@ void CHudEditor::RenderOverlay(vec2 MousePos)
 	GameClient()->m_VoiceChat.RenderHudMuteStatusIndicator(Width, Height, true);
 	GameClient()->m_EdgeHelper.RenderPreview();
 	GameClient()->m_FinishPrediction.RenderPreview();
+	GameClient()->m_Splits.RenderHudPreview(); // ddnetty
 	GameClient()->m_Keystrokes.RenderKeyboardPreview();
 	GameClient()->m_Keystrokes.RenderMousePreview();
 

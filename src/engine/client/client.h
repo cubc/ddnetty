@@ -325,6 +325,7 @@ public:
 	const std::vector<std::string> &MaplistEntries() const override { return m_vMaplistEntries; }
 
 	bool ConnectionProblems() const override;
+	int RealPingMs() const override; // ddnetty
 
 	IGraphics::CTextureHandle GetDebugFont() const override { return m_DebugFont; }
 

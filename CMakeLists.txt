@@ -1777,6 +1777,8 @@ set(EXPECTED_DATA
   countryflags/ZW.png
   countryflags/default.png
   countryflags/index.txt
+  ddnetty/languages/brazilian_portuguese.txt
+  ddnetty/languages/portuguese.txt
   deadtee.png
   debug_font.png
   editor/audio_source.png
@@ -2692,6 +2694,8 @@ set_src(GAME_SHARED GLOB src/game
   alloc.h
   collision.cpp
   collision.h
+  ddnetty_splits.cpp
+  ddnetty_splits.h
   gamecore.cpp
   gamecore.h
   layers.cpp
@@ -3108,6 +3112,8 @@ if(CLIENT)
     components/countryflags.h
     components/damageind.cpp
     components/damageind.h
+    components/ddnetty/splits.cpp
+    components/ddnetty/splits.h
     components/debughud.cpp
     components/debughud.h
     components/effects.cpp
@@ -3147,6 +3153,7 @@ if(CLIENT)
     components/menus.cpp
     components/menus.h
     components/menus_browser.cpp
+    components/menus_ddnetty.cpp
     components/menus_demo.cpp
     components/menus_ingame.cpp
     components/menus_ingame_touch_controls.cpp
@@ -4014,6 +4021,7 @@ if((GTEST_FOUND OR DOWNLOAD_GTEST) AND SERVER)
     csv_test.cpp
     datafile_test.cpp
     dbg_test.cpp
+    ddnetty_splits_test.cpp
     demo_tee_edit_test.cpp
     demo_tee_selection_test.cpp
     editor_test.cpp
