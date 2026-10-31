@@ -127,6 +127,21 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	int m_aFakePingLastAheadTick[NUM_DUMMIES] = {-1, -1};
 	// lock: correction learned from the ping the server shows us (ms)
 	int m_FakePingBias = 0;
+	// lock probe: an extra copy of the last input, sent at the exact moment that makes
+	// the server measure the wanted ping (it shows the lowest value of each second)
+	struct SFakePingProbe
+	{
+		bool m_Pending = false;
+		int m_Conn = 0;
+		int64_t m_SendTime = 0;
+		int m_AckTick = -1;
+		int m_IntendedTick = -1;
+		int m_Size = 0;
+		int m_aData[MAX_INPUT_SIZE] = {};
+	} m_FakePingProbe;
+	int64_t m_FakePingLastProbe = 0;
+	void FakePingScheduleProbe(int Conn, int64_t SendTime, int IntendedTick, const int *pData, int Size);
+	void FakePingSendProbe();
 	int m_FakePingBiasTarget = 0;
 	int64_t m_FakePingLastObserved = 0;
 	int m_aCurrentRecvTick[NUM_DUMMIES] = {0, 0};

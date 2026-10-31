@@ -403,7 +403,91 @@ void CClient::FakePingObserved(int LatencyMs)
 		return;
 	m_FakePingLastObserved = Now;
 	const int Error = Target - std::min(LatencyMs, 2000);
-	m_FakePingBias = std::clamp(m_FakePingBias + Error * 6 / 10, -300, 300);
+	if(std::abs(Error) <= 1)
+		return; // close enough: don't chase the jitter
+	m_FakePingBias = std::clamp(m_FakePingBias + Error / 2, -300, 300);
+}
+
+// Lock probe. The server keeps, at each tick, the ping of the last packet that arrived before
+// it, and shows the lowest of each second. Regular inputs are kept ~8 ms above the target;
+// a few times per second we send one extra copy of the last input (same tick, no effect on
+// the game) timed to arrive late in the same tick as that input, acking a snapshot chosen
+// so that the server measures exactly the target.
+void CClient::FakePingScheduleProbe(int Conn, int64_t SendTime, int IntendedTick, const int *pData, int Size)
+{
+	const int Target = g_Config.m_DtFakePing;
+	if(Target < 25 || Target >= 999 || m_aFakePingTimeLeftCount[Conn] <= 0 || m_aAckGameTick[Conn] < 0)
+		return;
+	if(m_FakePingProbe.m_Pending || SendTime - m_FakePingLastProbe < time_freq() / 4)
+		return;
+
+	const int TickMs = 1000 / GameTickSpeed();
+	int64_t Sum = 0;
+	for(int k = 0; k < m_aFakePingTimeLeftCount[Conn]; k++)
+		Sum += m_aaFakePingTimeLeft[Conn][k];
+	const int TimeLeft = (int)(Sum / m_aFakePingTimeLeftCount[Conn]);
+
+	// server tick c in which this input arrives, and where inside that tick (ms)
+	const int TicksAhead = TimeLeft > 0 ? (TimeLeft + TickMs - 1) / TickMs : 0;
+	const int ArrivalTick = IntendedTick - TicksAhead;
+	const int ArrivalPhase = TicksAhead * TickMs - TimeLeft;
+	const int Margin = 2;
+	const int Wanted = Target + m_FakePingBias;
+
+	// latency = (c - Tp) * tick + phase: find a snapshot tick Tp whose phase fits after this input
+	const int Step = std::max(1, m_aFakePingSnapStep[Conn]);
+	const int Ref = m_aFakePingLastSnapTick[Conn] >= 0 ? m_aFakePingLastSnapTick[Conn] : m_aAckGameTick[Conn];
+	for(int Back = std::max(0, (Wanted - (TickMs - Margin)) / TickMs); Back <= Wanted / TickMs + 1; Back++)
+	{
+		const int Tp = ArrivalTick - Back;
+		if(((Tp - Ref) % Step + Step) % Step != 0)
+			continue;
+		const int Phase = Wanted - Back * TickMs;
+		if(Phase <= ArrivalPhase + Margin || Phase >= TickMs - Margin)
+			continue;
+		if(Tp < m_aFakePingLastSentAck[Conn])
+			return; // acks never go backwards
+		m_FakePingProbe.m_Pending = true;
+		m_FakePingProbe.m_Conn = Conn;
+		m_FakePingProbe.m_SendTime = SendTime + (int64_t)(Phase - ArrivalPhase) * time_freq() / 1000;
+		m_FakePingProbe.m_AckTick = Tp;
+		m_FakePingProbe.m_IntendedTick = IntendedTick;
+		m_FakePingProbe.m_Size = Size;
+		mem_copy(m_FakePingProbe.m_aData, pData, (size_t)Size);
+		return;
+	}
+}
+
+void CClient::FakePingSendProbe()
+{
+	if(!m_FakePingProbe.m_Pending)
+		return;
+	const int64_t Now = time_get();
+	if(Now < m_FakePingProbe.m_SendTime)
+		return;
+	m_FakePingProbe.m_Pending = false;
+	const int Conn = m_FakePingProbe.m_Conn;
+	// too late (slow frame): the timing would be off, skip this one
+	if(Now - m_FakePingProbe.m_SendTime > time_freq() * 3 / 1000 || g_Config.m_DtFakePing < 25 || m_aAckGameTick[Conn] < 0)
+		return;
+	if(m_FakePingProbe.m_AckTick < m_aFakePingLastSentAck[Conn])
+		return;
+
+	CMsgPacker Msg(NETMSG_INPUT, true);
+	Msg.AddInt(m_FakePingProbe.m_AckTick);
+	Msg.AddInt(m_FakePingProbe.m_IntendedTick);
+	Msg.AddInt(m_FakePingProbe.m_Size);
+	for(int k = 0; k < m_FakePingProbe.m_Size / 4; k++)
+	{
+		static const int FlagsOffset = offsetof(CNetObj_PlayerInput, m_PlayerFlags) / sizeof(int);
+		if(k == FlagsOffset && IsSixup())
+			Msg.AddInt(PlayerFlags_SixToSeven(m_FakePingProbe.m_aData[k]));
+		else
+			Msg.AddInt(m_FakePingProbe.m_aData[k]);
+	}
+	SendMsg(Conn, &Msg, MSGFLAG_FLUSH);
+	m_aFakePingLastSentAck[Conn] = m_FakePingProbe.m_AckTick;
+	m_FakePingLastProbe = Now;
 }
 
 int CClient::RealPingMs() const
@@ -480,6 +564,8 @@ void CClient::SendInput()
 			m_aCurrentInput[i] %= 200;
 
 			SendMsg(i, &Msg, MSGFLAG_FLUSH);
+			if(Dummy == 0) // ddnetty: fake ping lock
+				FakePingScheduleProbe(i, Now, m_aPredTick[g_Config.m_ClDummy], aSendData, Size);
 			// ugly workaround for dummy. we need to send input with dummy to prevent
 			// prediction time resets. but if we do it too often, then it's
 			// impossible to use grenade with frozen dummy that gets hammered...
@@ -543,8 +629,10 @@ int CClient::FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhe
 			const int Safety = (Zero ? 0 : g_Config.m_DtFakePingSafety) + m_aFakePingExtraSafety[Conn];
 			const int ServerTick = IntendedTick - CeilDiv(TimeLeftMax, TickMs) - Safety;
 
-			// latency(T) ~= (IntendedTick - T) * tick - TimeLeft; the bias comes from the lock
-			const int WantedMs = std::max(0, TargetMs + m_FakePingBias);
+			// latency(T) ~= (IntendedTick - T) * tick - TimeLeft; the bias comes from the lock.
+			// With probes the probe sets the shown (lowest) value, so regular inputs stay a bit above.
+			const bool Probing = !Zero && TargetMs >= 25;
+			const int WantedMs = Probing ? TargetMs + 8 : std::max(0, TargetMs + m_FakePingBias);
 			int Target = IntendedTick - CeilDiv(WantedMs + TimeLeftAvg, TickMs);
 			Target = std::min(Target, ServerTick);
 
@@ -693,6 +781,7 @@ void CClient::OnEnterGame(bool Dummy)
 	m_aFakePingSnapStep[Dummy] = 2;
 	m_aFakePingExtraSafety[Dummy] = 0;
 	m_aFakePingLastAheadTick[Dummy] = -1;
+	m_FakePingProbe.m_Pending = false;
 	m_aCurrentRecvTick[Dummy] = 0;
 	m_aPrevGameTick[Dummy] = 0;
 	m_aCurGameTick[Dummy] = 0;
@@ -3259,6 +3348,7 @@ void CClient::Update()
 					// send input
 					SendInput();
 				}
+				FakePingSendProbe(); // ddnetty
 
 				// bestclient
 				const bool HasFastInput =
