@@ -383,7 +383,29 @@ bool CClient::ConnectionProblems() const
 	return m_aNetClient[g_Config.m_ClDummy].GotProblems(MaxLatencyTicks() * time_freq() / GameTickSpeed());
 }
 
-// ddnetty
+// ddnetty: lock the fake ping. The server only refreshes the ping we see of ourselves
+// while our scoreboard or menu is open; the game client calls this then.
+void CClient::FakePingObserved(int LatencyMs)
+{
+	const int Target = g_Config.m_DtFakePing >= 999 ? 1100 : g_Config.m_DtFakePing;
+	if(Target <= 0 || LatencyMs <= 0)
+		return;
+	if(m_FakePingBiasTarget != Target)
+	{
+		// a new target keeps most of what was learned, the network didn't change
+		m_FakePingBiasTarget = Target;
+		m_FakePingLastObserved = time_get();
+		return;
+	}
+	const int64_t Now = time_get();
+	// the shown value is the lowest of each second, wait for a fresh one
+	if(Now - m_FakePingLastObserved < time_freq() * 12 / 10)
+		return;
+	m_FakePingLastObserved = Now;
+	const int Error = Target - std::min(LatencyMs, 2000);
+	m_FakePingBias = std::clamp(m_FakePingBias + Error * 6 / 10, -300, 300);
+}
+
 int CClient::RealPingMs() const
 {
 	const int64_t Rtt = m_aFakePingRtt[g_Config.m_ClDummy];
@@ -495,33 +517,16 @@ int CClient::FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhe
 		const int64_t Rtt = std::max<int64_t>(m_aFakePingRtt[Conn], 0);
 		const int64_t Offset = (int64_t)TargetMs * time_freq() / 1000 - Rtt;
 
-		if(Offset > 0)
+		if(m_aFakePingTimeLeftCount[Conn] > 0)
 		{
-			// higher than real: newest snapshot we received at least `Offset` ago
-			int Candidate = -1;
-			for(const CSnapshotStorage::CHolder *pHolder = m_aSnapshotStorage[Conn].m_pLast; pHolder; pHolder = pHolder->m_pPrev)
-			{
-				if(pHolder->m_Tick <= RealAck && Now - pHolder->m_Tagtime >= Offset)
-				{
-					Candidate = pHolder->m_Tick;
-					break;
-				}
-			}
-			// While nothing is old enough, keep acking the last one, so the ping ramps up smoothly.
-			if(Candidate >= 0)
-				AckTick = Candidate;
-			else if(LastSent >= 0)
-				AckTick = LastSent;
-		}
-		else if(m_aFakePingTimeLeftCount[Conn] > 0)
-		{
-			// Lower than real: ack a snapshot the server already made but that is still on its
-			// way to us. The server measures "input arrival - snapshot creation", so the closer
-			// that snapshot is to the server's current tick, the lower the ping it sees.
+			// The server measures "input arrival - creation of the acked snapshot". It reports
+			// how early each input arrives (NETMSG_INPUTTIMING), so we know which snapshot gives
+			// the wanted ping, above or below the real one. Below the real one that snapshot is
+			// still on its way to us, which is fine: it arrives before the snapshots built on it.
 			//
 			// When an input is processed, the server is at tick IntendedTick - ceil(TimeLeft / tick)
 			// and has already made that tick's snapshot. Acking past the server's tick makes it
-			// drop the whole input, so the bound uses the earliest arrival seen lately.
+			// drop the whole input, so that bound uses the earliest arrival seen lately.
 			const int TickMs = 1000 / GameTickSpeed();
 			int TimeLeftMax = INT_MIN;
 			int64_t TimeLeftSum = 0;
@@ -536,8 +541,9 @@ int CClient::FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhe
 			const int Safety = g_Config.m_DtFakePingSafety + m_aFakePingExtraSafety[Conn];
 			const int ServerTick = IntendedTick - CeilDiv(TimeLeftMax, TickMs) - Safety;
 
-			// latency(T) ~= (IntendedTick - T) * tick - TimeLeft
-			int Target = IntendedTick - (int)std::lround((TargetMs + TimeLeftAvg) / (double)TickMs);
+			// latency(T) ~= (IntendedTick - T) * tick - TimeLeft; the bias comes from the lock
+			const int WantedMs = std::max(0, TargetMs + m_FakePingBias);
+			int Target = IntendedTick - CeilDiv(WantedMs + TimeLeftAvg, TickMs);
 			Target = std::min(Target, ServerTick);
 
 			// only ticks the server made a snapshot for, or it falls back to one snapshot per second
@@ -545,11 +551,29 @@ int CClient::FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhe
 			const int Ref = m_aFakePingLastSnapTick[Conn] >= 0 ? m_aFakePingLastSnapTick[Conn] : RealAck;
 			Target -= ((Target - Ref) % Step + Step) % Step;
 
-			if(Target > RealAck)
+			if(Target >= 0)
 			{
 				AckTick = Target;
-				*pAhead = true;
+				*pAhead = Target > RealAck;
 			}
+		}
+		else if(Offset > 0)
+		{
+			// no timing info yet: newest snapshot we received at least `Offset` ago
+			int Candidate = -1;
+			for(const CSnapshotStorage::CHolder *pHolder = m_aSnapshotStorage[Conn].m_pLast; pHolder; pHolder = pHolder->m_pPrev)
+			{
+				if(pHolder->m_Tick <= RealAck && Now - pHolder->m_Tagtime >= Offset)
+				{
+					Candidate = pHolder->m_Tick;
+					break;
+				}
+			}
+			// While nothing is old enough, keep acking the last one, so the ping ramps up smoothly.
+			if(Candidate >= 0)
+				AckTick = Candidate;
+			else if(LastSent >= 0)
+				AckTick = LastSent;
 		}
 	}
 

@@ -323,6 +323,7 @@ public:
 	virtual const char *LatestVersion() const = 0;
 	virtual bool ConnectionProblems() const = 0;
 	virtual int RealPingMs() const = 0; // ddnetty: measured round trip (ignores fake ping), -1 if unknown
+	virtual void FakePingObserved(int LatencyMs) = 0; // ddnetty: our ping as the server shows it, to lock the fake ping
 
 	virtual IGraphics::CTextureHandle GetDebugFont() const = 0; // TODO: remove this function
 
