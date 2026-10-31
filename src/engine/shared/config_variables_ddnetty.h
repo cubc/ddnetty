@@ -25,3 +25,4 @@ MACRO_CONFIG_INT(DtSplitsHudIdeal, dt_splits_hud_ideal, 0, 0, 1, CFGFLAG_CLIENT 
 
 // BestClient network
 MACRO_CONFIG_INT(DtBestClientPresence, dt_bestclient_presence, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Announce yourself to the BestClient indicator server (it marks DDNetty as FAKE since it is not an official BestClient build)")
+MACRO_CONFIG_INT(DtFakePingSafety, dt_fake_ping_safety, 1, 0, 5, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fake ping below your real ping: ticks of distance from the server's tick (0 = lowest possible, may drop inputs)")
