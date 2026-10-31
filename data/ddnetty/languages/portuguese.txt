@@ -34,10 +34,6 @@ Scoreboard: unknown
 == No placar: desconhecido
 
 [DDNetty]
-Fake ping only raises your ping, it can't lower it.
-== O ping falso só aumenta seu ping, não diminui.
-
-[DDNetty]
 Console
 == Console
 
@@ -514,3 +510,13 @@ today
 [DDNetty]
 ● run
 == ● run
+
+# Fake ping below real
+
+[DDNetty]
+Safety (lower ping)
+== Segurança (ping menor)
+
+[DDNetty]
+Below your real ping it acks snapshots still on their way. Safety 0 goes lowest but can drop inputs; it backs off by itself if that happens.
+== Abaixo do seu ping real, ele confirma snapshots que ainda estão chegando. Segurança 0 vai mais baixo mas pode perder input; se acontecer, ele recua sozinho.
