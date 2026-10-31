@@ -125,6 +125,10 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	int m_aFakePingExtraSafety[NUM_DUMMIES] = {0, 0}; // raised when inputs acking ahead got no reply
 	int64_t m_aFakePingLastDrop[NUM_DUMMIES] = {0, 0};
 	int m_aFakePingLastAheadTick[NUM_DUMMIES] = {-1, -1};
+	// lock: correction learned from the ping the server shows us (ms)
+	int m_FakePingBias = 0;
+	int m_FakePingBiasTarget = 0;
+	int64_t m_FakePingLastObserved = 0;
 	int m_aCurrentRecvTick[NUM_DUMMIES] = {0, 0};
 	int m_aRconAuthed[NUM_DUMMIES] = {0, 0};
 	char m_aRconUsername[64] = "";
@@ -338,6 +342,7 @@ public:
 
 	bool ConnectionProblems() const override;
 	int RealPingMs() const override; // ddnetty
+	void FakePingObserved(int LatencyMs) override; // ddnetty
 
 	IGraphics::CTextureHandle GetDebugFont() const override { return m_DebugFont; }
 
