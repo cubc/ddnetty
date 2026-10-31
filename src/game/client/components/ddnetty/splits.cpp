@@ -195,6 +195,9 @@ void CSplits::ResetRun()
 	m_LastUsedPoint = POINT_NONE;
 	m_RouteIndex = -1;
 	m_StartTick = -1.0;
+	m_StartClientId = -1;
+	m_SwitchedTee = false;
+	m_PrimeFromPrev = false;
 	m_InTimecp = -1;
 	m_InStart = false;
 	m_InFinish = false;
@@ -229,9 +232,24 @@ void CSplits::OnNewSnapshot()
 	}
 	if(LocalId != m_TrackedClientId)
 	{
-		// switched to the dummy (or back): start over
-		ResetRun();
-		m_TrackedClientId = LocalId;
+		const auto &aLocalIds = GameClient()->m_aLocalIds;
+		const bool IsOwnTee = m_TrackedClientId >= 0 && (aLocalIds[0] == m_TrackedClientId || aLocalIds[1] == m_TrackedClientId) && (aLocalIds[0] == LocalId || aLocalIds[1] == LocalId);
+		if(IsOwnTee && m_LastPoint != POINT_NONE)
+		{
+			// switched between the main tee and the dummy in the middle of a run: the run goes on,
+			// only the tile state of the new tee has to be learned again
+			if(m_StartTick < 0.0 && GameClient()->LastRaceTick() >= 0)
+				m_StartTick = GameClient()->LastRaceTick(); // still the value of the tee we are leaving
+			m_SwitchedTee = true;
+			m_PrimeFromPrev = true;
+			m_LastProcessedTick = -1;
+			m_TrackedClientId = LocalId;
+		}
+		else
+		{
+			ResetRun();
+			m_TrackedClientId = LocalId;
+		}
 	}
 
 	const CNetObj_Character &Prev = Snap.m_aCharacters[LocalId].m_Prev;
@@ -255,10 +273,17 @@ void CSplits::OnNewSnapshot()
 
 	if(m_LastProcessedTick < 0)
 	{
-		// first snapshot after a reset: only learn where we are
-		PrimeAt(Pos);
-		m_LastProcessedTick = Cur.m_Tick;
-		return;
+		if(!m_PrimeFromPrev)
+		{
+			// first snapshot after a reset: only learn where we are
+			PrimeAt(Pos);
+			m_LastProcessedTick = Cur.m_Tick;
+			return;
+		}
+		// first snapshot after switching tee: start from where the new tee was one step ago,
+		// so a checkpoint crossed right at the switch still counts
+		m_PrimeFromPrev = false;
+		PrimeAt(PrevPos);
 	}
 
 	// teleports: map teleporters are part of the route, anything else (rescue, /tc, ...) breaks the run
@@ -348,7 +373,13 @@ void CSplits::OnPoint(int Point, double Tick)
 
 	if(Point == POINT_START)
 	{
+		// the other tee leaving its own start line while the run is under way is not a new run
+		if(m_SwitchedTee && m_StartClientId >= 0 && m_StartClientId != m_TrackedClientId && m_LastPoint != POINT_NONE && m_LastPoint != POINT_START)
+			return;
+
 		// (re)starting the race begins a new run
+		m_StartClientId = m_TrackedClientId;
+		m_SwitchedTee = false;
 		m_RunId = m_Data.NextRunId();
 		m_LastPoint = POINT_START;
 		m_LastPointTick = Tick;
@@ -386,7 +417,10 @@ void CSplits::OnPoint(int Point, double Tick)
 		m_HudPrediction = -1;
 		m_HudUnlikely = false;
 		double RaceStart = -1.0;
-		if(GameClient()->LastRaceTick() >= 0)
+		// after switching tee the server timer belongs to the other tee, so the run keeps its own clock
+		if(m_SwitchedTee && m_StartTick >= 0.0)
+			RaceStart = m_StartTick;
+		else if(GameClient()->LastRaceTick() >= 0)
 			RaceStart = GameClient()->LastRaceTick();
 		else if(m_StartTick >= 0.0)
 			RaceStart = m_StartTick;

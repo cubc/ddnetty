@@ -77,6 +77,10 @@ private:
 	double m_LastUsedPointTick = 0.0;
 	int m_RouteIndex = -1; // where on the route the run is, -1 if unknown
 	double m_StartTick = -1.0; // when the start line was left, -1 if unknown
+	// switching between the main tee and the dummy keeps the run going
+	int m_StartClientId = -1; // the tee that left the start line
+	bool m_SwitchedTee = false; // the run has been carried over to the other tee at least once
+	bool m_PrimeFromPrev = false; // right after a switch: the step before it still counts
 	int m_InTimecp = -1;
 	bool m_InStart = false;
 	bool m_InFinish = false;
