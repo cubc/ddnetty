@@ -387,8 +387,8 @@ bool CClient::ConnectionProblems() const
 // while our scoreboard or menu is open; the game client calls this then.
 void CClient::FakePingObserved(int LatencyMs)
 {
-	const int Target = g_Config.m_DtFakePing >= 999 ? 1100 : g_Config.m_DtFakePing;
-	if(Target <= 0 || LatencyMs <= 0)
+	const int Target = g_Config.m_DtFakePing >= 999 ? 1100 : (g_Config.m_DtFakePing == 1 ? 0 : g_Config.m_DtFakePing);
+	if(g_Config.m_DtFakePing <= 0 || LatencyMs < 0)
 		return;
 	if(m_FakePingBiasTarget != Target)
 	{
@@ -513,7 +513,9 @@ int CClient::FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhe
 	if(g_Config.m_DtFakePing > 0 && RealAck >= 0)
 	{
 		// The scoreboard shows at most 999, so for 999 aim a bit above it to absorb jitter.
-		const int TargetMs = g_Config.m_DtFakePing >= 999 ? 1100 : g_Config.m_DtFakePing;
+		// 1 means 0 ms: ack the server's current tick (its snapshot is made before inputs are read).
+		const bool Zero = g_Config.m_DtFakePing == 1;
+		const int TargetMs = g_Config.m_DtFakePing >= 999 ? 1100 : (Zero ? 0 : g_Config.m_DtFakePing);
 		const int64_t Rtt = std::max<int64_t>(m_aFakePingRtt[Conn], 0);
 		const int64_t Offset = (int64_t)TargetMs * time_freq() / 1000 - Rtt;
 
@@ -538,7 +540,7 @@ int CClient::FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhe
 			}
 			const int TimeLeftAvg = (int)(TimeLeftSum / Count);
 			auto &&CeilDiv = [](int Value, int Divisor) { return Value >= 0 ? (Value + Divisor - 1) / Divisor : -((-Value) / Divisor); };
-			const int Safety = g_Config.m_DtFakePingSafety + m_aFakePingExtraSafety[Conn];
+			const int Safety = (Zero ? 0 : g_Config.m_DtFakePingSafety) + m_aFakePingExtraSafety[Conn];
 			const int ServerTick = IntendedTick - CeilDiv(TimeLeftMax, TickMs) - Safety;
 
 			// latency(T) ~= (IntendedTick - T) * tick - TimeLeft; the bias comes from the lock

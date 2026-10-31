@@ -68,21 +68,22 @@ void CMenus::RenderDDNettyGeneral(CUIRect MainView)
 
 	// The slider edits a remembered value, so turning the fake ping off (0)
 	// keeps the last chosen ping for when it's turned back on.
+	// the slider shows 0..999; 0 is stored as 1 because a stored 0 means "off"
 	static int s_FakePingValue = 999;
 	if(g_Config.m_DtFakePing > 0)
-		s_FakePingValue = g_Config.m_DtFakePing;
+		s_FakePingValue = g_Config.m_DtFakePing == 1 ? 0 : g_Config.m_DtFakePing;
 
 	Left.HSplitTop(LineSize, &Button, &Left);
 	static int s_FakePingCheckbox = 0;
 	if(DoButton_CheckBox(&s_FakePingCheckbox, DtLocalize("Enable fake ping"), g_Config.m_DtFakePing > 0, &Button))
-		g_Config.m_DtFakePing = g_Config.m_DtFakePing > 0 ? 0 : s_FakePingValue;
+		g_Config.m_DtFakePing = g_Config.m_DtFakePing > 0 ? 0 : std::max(s_FakePingValue, 1);
 
 	Left.HSplitTop(Spacing, nullptr, &Left);
 	Left.HSplitTop(LineSize, &Button, &Left);
-	if(Ui()->DoScrollbarOption(&s_FakePingValue, &s_FakePingValue, &Button, DtLocalize("Ping others see"), 1, 999, &CUi::ms_LinearScrollbarScale, 0u, " ms"))
+	if(Ui()->DoScrollbarOption(&s_FakePingValue, &s_FakePingValue, &Button, DtLocalize("Ping others see"), 0, 999, &CUi::ms_LinearScrollbarScale, 0u, " ms"))
 	{
 		if(g_Config.m_DtFakePing > 0)
-			g_Config.m_DtFakePing = s_FakePingValue;
+			g_Config.m_DtFakePing = std::max(s_FakePingValue, 1);
 	}
 
 	// below the real ping: how close to the server's tick we dare to ack

@@ -9,7 +9,7 @@
 #endif
 
 // Fake ping
-MACRO_CONFIG_INT(DtFakePing, dt_fake_ping, 0, 0, 999, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Ping (ms) the server measures and shows on the scoreboard, without delaying your own input (0 = off, 999 = max)")
+MACRO_CONFIG_INT(DtFakePing, dt_fake_ping, 0, 0, 999, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Ping (ms) the server measures and shows on the scoreboard, without delaying your own input (0 = off, 1 = 0 ms / lowest possible, 999 = max)")
 
 // Splits
 MACRO_CONFIG_INT(DtSplits, dt_splits, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Record split times on race maps")
