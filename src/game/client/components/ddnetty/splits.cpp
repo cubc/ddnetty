@@ -214,6 +214,15 @@ bool CSplits::IsPractice() const
 
 void CSplits::OnNewSnapshot()
 {
+	// ddnetty fake ping lock: the ping the server shows of us is only fresh while our
+	// scoreboard or menu is open (that's when the server refreshes it for us)
+	if(g_Config.m_DtFakePing > 0 && Client()->State() == IClient::STATE_ONLINE && (GameClient()->m_Scoreboard.IsActive() || GameClient()->m_Menus.IsActive()))
+	{
+		const int LocalId = GameClient()->m_Snap.m_LocalClientId;
+		if(LocalId >= 0 && GameClient()->m_Snap.m_apPlayerInfos[LocalId])
+			Client()->FakePingObserved(GameClient()->m_Snap.m_apPlayerInfos[LocalId]->m_Latency);
+	}
+
 	if(!g_Config.m_DtSplits || !HasMap() || Client()->State() != IClient::STATE_ONLINE || !GameClient()->m_GameInfo.m_Race)
 	{
 		ResetRun();

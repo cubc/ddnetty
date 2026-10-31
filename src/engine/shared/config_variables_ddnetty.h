@@ -9,7 +9,7 @@
 #endif
 
 // Fake ping
-MACRO_CONFIG_INT(DtFakePing, dt_fake_ping, 0, 0, 999, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Ping (ms) the server measures and shows on the scoreboard, without delaying your own input (0 = off, 999 = max)")
+MACRO_CONFIG_INT(DtFakePing, dt_fake_ping, 0, 0, 999, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Ping (ms) the server measures and shows on the scoreboard, without delaying your own input (0 = off, 1 = 0 ms / lowest possible, 999 = max)")
 
 // Splits
 MACRO_CONFIG_INT(DtSplits, dt_splits, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Record split times on race maps")
@@ -25,3 +25,4 @@ MACRO_CONFIG_INT(DtSplitsHudIdeal, dt_splits_hud_ideal, 0, 0, 1, CFGFLAG_CLIENT 
 
 // BestClient network
 MACRO_CONFIG_INT(DtBestClientPresence, dt_bestclient_presence, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Announce yourself to the BestClient indicator server (it marks DDNetty as FAKE since it is not an official BestClient build)")
+MACRO_CONFIG_INT(DtFakePingSafety, dt_fake_ping_safety, 1, 0, 5, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fake ping below your real ping: ticks of distance from the server's tick (0 = lowest possible, may drop inputs)")

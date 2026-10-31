@@ -115,6 +115,35 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	// ddnetty: fake ping
 	int m_aFakePingLastSentAck[NUM_DUMMIES] = {-1, -1};
 	int64_t m_aFakePingRtt[NUM_DUMMIES] = {-1, -1}; // estimated real round trip, in time_freq() units
+	// for a fake ping below the real one: how early our inputs reach the server (ms, from NETMSG_INPUTTIMING)
+	static constexpr int FAKE_PING_TIMELEFT_SAMPLES = 50;
+	int m_aaFakePingTimeLeft[NUM_DUMMIES][FAKE_PING_TIMELEFT_SAMPLES] = {};
+	int m_aFakePingTimeLeftCount[NUM_DUMMIES] = {0, 0};
+	int m_aFakePingTimeLeftNext[NUM_DUMMIES] = {0, 0};
+	int m_aFakePingLastSnapTick[NUM_DUMMIES] = {-1, -1};
+	int m_aFakePingSnapStep[NUM_DUMMIES] = {2, 2}; // the server snapshots every 2 ticks unless high bandwidth
+	int m_aFakePingExtraSafety[NUM_DUMMIES] = {0, 0}; // raised when inputs acking ahead got no reply
+	int64_t m_aFakePingLastDrop[NUM_DUMMIES] = {0, 0};
+	int m_aFakePingLastAheadTick[NUM_DUMMIES] = {-1, -1};
+	// lock: correction learned from the ping the server shows us (ms)
+	int m_FakePingBias = 0;
+	// lock probe: an extra copy of the last input, sent at the exact moment that makes
+	// the server measure the wanted ping (it shows the lowest value of each second)
+	struct SFakePingProbe
+	{
+		bool m_Pending = false;
+		int m_Conn = 0;
+		int64_t m_SendTime = 0;
+		int m_AckTick = -1;
+		int m_IntendedTick = -1;
+		int m_Size = 0;
+		int m_aData[MAX_INPUT_SIZE] = {};
+	} m_FakePingProbe;
+	int64_t m_FakePingLastProbe = 0;
+	void FakePingScheduleProbe(int Conn, int64_t SendTime, int IntendedTick, const int *pData, int Size);
+	void FakePingSendProbe();
+	int m_FakePingBiasTarget = 0;
+	int64_t m_FakePingLastObserved = 0;
 	int m_aCurrentRecvTick[NUM_DUMMIES] = {0, 0};
 	int m_aRconAuthed[NUM_DUMMIES] = {0, 0};
 	char m_aRconUsername[64] = "";
@@ -184,6 +213,8 @@ class CClient : public IClient, public CDemoPlayer::IListener
 		int64_t m_PredictedTime; // prediction latency when we sent this input
 		int64_t m_PredictionMargin; // prediction margin when we sent this input
 		int64_t m_Time;
+		bool m_AheadAck; // ddnetty: acked a snapshot still on its way (fake ping below real)
+		bool m_GotTiming; // ddnetty: the server answered with NETMSG_INPUTTIMING
 	} m_aInputs[NUM_DUMMIES][200];
 
 	int m_aCurrentInput[NUM_DUMMIES] = {0, 0};
@@ -326,11 +357,12 @@ public:
 
 	bool ConnectionProblems() const override;
 	int RealPingMs() const override; // ddnetty
+	void FakePingObserved(int LatencyMs) override; // ddnetty
 
 	IGraphics::CTextureHandle GetDebugFont() const override { return m_DebugFont; }
 
 	void SendInput();
-	int FakePingAckTick(int Conn, int64_t Now); // ddnetty
+	int FakePingAckTick(int Conn, int64_t Now, int IntendedTick, bool *pAhead); // ddnetty
 
 	// TODO: OPT: do this a lot smarter!
 	int *GetInput(int Tick, int IsDummy) const override;
