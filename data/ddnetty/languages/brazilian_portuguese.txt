@@ -368,12 +368,12 @@ Click a checkpoint to rename or delete it. Double click on the map renames too.
 == Clique num checkpoint pra renomear ou apagar. Clique duplo no mapa também renomeia.
 
 [DDNetty]
-Delete %s? It's your last checkpoint, so the %d times that came from your checkpoints are deleted too.
-== Apagar %s? É seu último checkpoint, então os %d tempos que vieram dos seus checkpoints também são apagados.
+Delete %s? Its segments are merged into the neighbouring ones, but %d times at the edge of a run can't be merged and are deleted.
+== Apagar %s? Os trechos dele são juntados com os vizinhos, mas %d tempos na ponta de uma run não dá pra juntar e são apagados.
 
 [DDNetty]
-Delete all %d checkpoints and the %d times that came from them? Times from the map's time checkpoints stay.
-== Apagar os %d checkpoints e os %d tempos que vieram deles? Os tempos dos timecps do mapa ficam.
+Delete all %d checkpoints? Their times are merged into the map's time checkpoints; %d times that can't be merged are deleted.
+== Apagar os %d checkpoints? Os tempos deles são juntados nos timecps do mapa; %d tempos que não dá pra juntar são apagados.
 
 [DDNetty]
 Delete all checkpoints
@@ -428,8 +428,8 @@ Possible gain
 == Dá pra ganhar
 
 [DDNetty]
-Right click again: deletes your last checkpoint and %d times that came from your checkpoints
-== Clique direito de novo: apaga seu último checkpoint e %d tempos que vieram dos seus checkpoints
+Right click again: deletes this checkpoint and %d times that can't be merged
+== Clique direito de novo: apaga este checkpoint e %d tempos que não dá pra juntar
 
 [DDNetty]
 Run evolution
