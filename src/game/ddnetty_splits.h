@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -52,7 +53,7 @@ namespace DdnettySplits
 		int m_From = POINT_NONE;
 		int m_To = POINT_NONE;
 		int m_Millis = 0;
-		bool m_FromGate = false; // made by merging around a deleted or moved checkpoint
+		bool m_FromGate = false; // made by merging around a deleted or moved checkpoint (informational)
 	};
 
 	struct SOptions
@@ -146,13 +147,15 @@ namespace DdnettySplits
 
 		void DeleteRuns(const std::vector<int> &vRunIds);
 		void DeleteSegment(int From, int To, const SOptions &Options);
-		// merges the segments around Point into one, dropping the ones that can't be merged
-		void ForgetPoint(int Point);
-		// deleting one checkpoint merges its times into the neighbouring segments;
-		// deleting the last one removes everything that came from checkpoints
+		// takes the points out of the runs, adding up the times around them; returns how many
+		// times were dropped because there was nothing to merge them with (at the edge of a run)
+		int ForgetPoints(const std::set<int> &Points);
+		int ForgetPoint(int Point);
+		// deleting checkpoints merges their times into the neighbouring segments, so the map's
+		// time checkpoints keep everything
 		void DeleteGate(int GateId);
 		void DeleteAllGates();
-		// how many saved times deleting this checkpoint removes (0 unless it's the last one)
+		// how many saved times deleting this checkpoint drops (the ones that can't be merged)
 		int GateDeleteCount(int GateId) const;
 		int AllGatesDeleteCount() const;
 
@@ -205,6 +208,7 @@ namespace DdnettySplits
 		SSummary Summarize(const SAnalysis &Analysis, bool IncludePractice) const;
 
 	private:
+		std::set<int> AllGatePoints() const;
 		// gives the attempts after a gap inside a run a new run id
 		void SplitRunsAtGaps();
 	};

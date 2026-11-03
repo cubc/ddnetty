@@ -161,7 +161,7 @@ TEST(DdnettySplits, ForgetPointMergesAround)
 	Data.m_vAttempts.push_back(Att(1, 100, G1, POINT_FINISH, 2000));
 	Data.m_vAttempts.push_back(Att(2, 200, G1, POINT_FINISH, 1500)); // started at the gate
 
-	EXPECT_EQ(Data.GateDeleteCount(1), 0);
+	EXPECT_EQ(Data.GateDeleteCount(1), 1); // run 2 started at the gate: nothing to merge it with
 	Data.DeleteGate(1);
 	ASSERT_EQ(Data.m_vGates.size(), 1u);
 	ASSERT_EQ(Data.m_vAttempts.size(), 1u);
@@ -172,7 +172,7 @@ TEST(DdnettySplits, ForgetPointMergesAround)
 	EXPECT_NE(CSplitsData::FormatAttempt(Data.m_vAttempts[0]).find(" g"), std::string::npos);
 }
 
-TEST(DdnettySplits, DeletingLastGateRemovesItsData)
+TEST(DdnettySplits, DeletingGatesKeepsTimecps)
 {
 	const int G2 = GatePoint(2);
 	CSplitsData Data;
@@ -181,32 +181,57 @@ TEST(DdnettySplits, DeletingLastGateRemovesItsData)
 	Data.m_vGates.push_back(Gate);
 	Gate.m_Id = 2;
 	Data.m_vGates.push_back(Gate);
-	// run 1 used both checkpoints and a map time checkpoint
-	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, G1, 1000));
-	Data.m_vAttempts.push_back(Att(1, 100, G1, 0, 1000));
-	Data.m_vAttempts.push_back(Att(1, 100, 0, G2, 1000));
+	// run 1: checkpoints between the map's time checkpoints
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, 0, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, 0, G1, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, G1, 1, 1000));
+	Data.m_vAttempts.push_back(Att(1, 100, 1, G2, 1000));
 	Data.m_vAttempts.push_back(Att(1, 100, G2, POINT_FINISH, 1000));
 	// run 2 never touched a checkpoint
 	Data.m_vAttempts.push_back(Att(2, 200, POINT_START, 0, 1500));
-	Data.m_vAttempts.push_back(Att(2, 200, 0, POINT_FINISH, 2500));
+	Data.m_vAttempts.push_back(Att(2, 200, 0, 1, 2500));
+	Data.m_vAttempts.push_back(Att(2, 200, 1, POINT_FINISH, 900));
 
-	Data.DeleteGate(1); // merges S -> T0 for run 1, marked as coming from a checkpoint
+	EXPECT_EQ(Data.GateDeleteCount(1), 0);
+	Data.DeleteGate(1);
 	ASSERT_EQ(Data.m_vGates.size(), 1u);
-	EXPECT_EQ(Data.GateDeleteCount(2), 3); // the merged S -> T0, T0 -> G2 and G2 -> F
-	EXPECT_EQ(Data.AllGatesDeleteCount(), 3);
+	EXPECT_EQ(Data.GateDeleteCount(2), 0);
+	EXPECT_EQ(Data.AllGatesDeleteCount(), 0);
+	Data.DeleteGate(2); // the last one
 
-	Data.DeleteGate(2);
 	EXPECT_TRUE(Data.m_vGates.empty());
-	ASSERT_EQ(Data.m_vAttempts.size(), 2u); // only run 2 is left
-	for(const SAttempt &Attempt : Data.m_vAttempts)
-		EXPECT_EQ(Attempt.m_RunId, 2);
+	const SAnalysis Analysis = Data.Analyze(SOptions());
+	ASSERT_NE(Analysis.Find(0, 1), nullptr);
+	EXPECT_EQ(Analysis.Find(0, 1)->m_Count, 2);
+	EXPECT_EQ(Analysis.Find(0, 1)->m_Best, 2000);
+	ASSERT_NE(Analysis.Find(1, POINT_FINISH), nullptr);
+	EXPECT_EQ(Analysis.Find(1, POINT_FINISH)->m_Count, 2);
+	const std::vector<SRun> vRuns = Data.Runs();
+	ASSERT_EQ(vRuns.size(), 2u);
+	EXPECT_TRUE(vRuns[0].Finished());
+	EXPECT_EQ(vRuns[0].m_Millis, 5000);
 
-	// old files without the mark still load
+	// "delete all" merges the same way, and old files without the mark still load
+	CSplitsData All;
+	All.m_vGates.push_back(Gate);
+	All.m_vAttempts.push_back(Att(1, 100, POINT_START, 0, 1000));
+	All.m_vAttempts.push_back(Att(1, 100, 0, G2, 1000));
+	All.m_vAttempts.push_back(Att(1, 100, G2, 0, 500)); // went back through the time checkpoint
+	All.m_vAttempts.push_back(Att(1, 100, 0, POINT_FINISH, 1000));
+	All.m_vAttempts.push_back(Att(2, 200, G2, POINT_FINISH, 700)); // started at the checkpoint
+	EXPECT_EQ(All.AllGatesDeleteCount(), 1);
+	All.DeleteAllGates();
+	ASSERT_EQ(All.m_vAttempts.size(), 2u);
+	EXPECT_EQ(All.m_vAttempts[1].m_From, 0);
+	EXPECT_EQ(All.m_vAttempts[1].m_To, POINT_FINISH);
+	EXPECT_EQ(All.Runs().size(), 1u);
+
 	CSplitsData Old;
 	EXPECT_TRUE(Old.ParseLine("att 1 100 0 S F 3000"));
 	EXPECT_FALSE(Old.m_vAttempts[0].m_FromGate);
 	EXPECT_TRUE(Old.ParseLine("att 2 100 0 S F 3000 g"));
 	EXPECT_TRUE(Old.m_vAttempts[1].m_FromGate);
+	EXPECT_TRUE(Old.ParseLine("att 3 100 0 S T1 0")); // two points crossed at the same moment
 }
 
 TEST(DdnettySplits, DeleteSegmentSplitsRun)

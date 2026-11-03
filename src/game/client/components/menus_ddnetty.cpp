@@ -696,7 +696,7 @@ void CMenus::RenderSplitsGates(CUIRect View)
 			char aMessage[256];
 			const int Count = Splits.Data().GateDeleteCount(m_SplitsSelectedGate);
 			if(Count > 0)
-				str_format(aMessage, sizeof(aMessage), DtLocalize("Delete %s? It's your last checkpoint, so the %d times that came from your checkpoints are deleted too."), Splits.PointName(DdnettySplits::GatePoint(m_SplitsSelectedGate)).c_str(), Count);
+				str_format(aMessage, sizeof(aMessage), DtLocalize("Delete %s? Its segments are merged into the neighbouring ones, but %d times at the edge of a run can't be merged and are deleted."), Splits.PointName(DdnettySplits::GatePoint(m_SplitsSelectedGate)).c_str(), Count);
 			else
 				str_format(aMessage, sizeof(aMessage), DtLocalize("Delete the checkpoint %s? Its segments are merged into the neighbouring ones."), Splits.PointName(DdnettySplits::GatePoint(m_SplitsSelectedGate)).c_str());
 			PopupConfirm(DtLocalize("Delete checkpoint"), aMessage, Localize("Yes"), Localize("No"), &CMenus::PopupConfirmSplitsDelete);
@@ -719,7 +719,7 @@ void CMenus::RenderSplitsGates(CUIRect View)
 	{
 		m_SplitsPendingDelete = SPLITS_DELETE_ALL_GATES;
 		char aMessage[256];
-		str_format(aMessage, sizeof(aMessage), DtLocalize("Delete all %d checkpoints and the %d times that came from them? Times from the map's time checkpoints stay."), (int)vGates.size(), Splits.Data().AllGatesDeleteCount());
+		str_format(aMessage, sizeof(aMessage), DtLocalize("Delete all %d checkpoints? Their times are merged into the map's time checkpoints; %d times that can't be merged are deleted."), (int)vGates.size(), Splits.Data().AllGatesDeleteCount());
 		PopupConfirm(DtLocalize("Delete all checkpoints"), aMessage, Localize("Yes"), Localize("No"), &CMenus::PopupConfirmSplitsDelete);
 	}
 

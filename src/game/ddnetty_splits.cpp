@@ -524,72 +524,108 @@ namespace DdnettySplits
 		SplitRunsAtGaps();
 	}
 
-	void CSplitsData::ForgetPoint(int Point)
+	int CSplitsData::ForgetPoints(const std::set<int> &Points)
 	{
+		int Dropped = 0;
 		std::vector<SAttempt> vKept;
-		for(size_t i = 0; i < m_vAttempts.size(); i++)
+		const size_t Num = m_vAttempts.size();
+		size_t ChainStart = 0;
+		while(ChainStart < Num)
 		{
-			const SAttempt &Attempt = m_vAttempts[i];
-			if(Attempt.m_To == Point)
+			// a chain is a run without gaps
+			size_t ChainEnd = ChainStart + 1;
+			while(ChainEnd < Num && m_vAttempts[ChainEnd].m_RunId == m_vAttempts[ChainStart].m_RunId && m_vAttempts[ChainEnd].m_From == m_vAttempts[ChainEnd - 1].m_To)
+				ChainEnd++;
+
+			// the chain is a list of points with times in between: take the forgotten points out and add
+			// up the times around them. A segment that then starts and ends at the same point (went back
+			// through it) is dropped, like while recording: the segment starts again at the last crossing.
+			std::vector<SAttempt> vChain(m_vAttempts.begin() + ChainStart, m_vAttempts.begin() + ChainEnd);
+			bool Changed = true;
+			while(Changed)
 			{
-				if(i + 1 < m_vAttempts.size() && m_vAttempts[i + 1].m_RunId == Attempt.m_RunId && m_vAttempts[i + 1].m_From == Point)
+				Changed = false;
+				// at the edges there is nothing to merge with: the time before the first point is unknown
+				while(!vChain.empty() && Points.count(vChain.front().m_From))
 				{
-					const SAttempt &Next = m_vAttempts[i + 1];
-					SAttempt Merged = Attempt;
+					vChain.erase(vChain.begin());
+					Dropped++;
+					Changed = true;
+				}
+				while(!vChain.empty() && Points.count(vChain.back().m_To))
+				{
+					vChain.pop_back();
+					Dropped++;
+					Changed = true;
+				}
+				for(size_t i = 0; i + 1 < vChain.size(); i++)
+				{
+					if(!Points.count(vChain[i].m_To))
+						continue;
+					SAttempt &Merged = vChain[i];
+					const SAttempt &Next = vChain[i + 1];
 					Merged.m_To = Next.m_To;
 					Merged.m_Millis += Next.m_Millis;
 					Merged.m_Practice = Merged.m_Practice || Next.m_Practice;
 					Merged.m_FromGate = true;
-					if(Merged.m_From != Merged.m_To)
-						vKept.push_back(Merged);
-					i++;
+					vChain.erase(vChain.begin() + i + 1);
+					if(Merged.m_From == Merged.m_To)
+						vChain.erase(vChain.begin() + i);
+					Changed = true;
+					break;
 				}
-				continue; // nothing to merge with: drop it
 			}
-			if(Attempt.m_From == Point)
-				continue; // the run started at this point: drop it
-			vKept.push_back(Attempt);
+			vKept.insert(vKept.end(), vChain.begin(), vChain.end());
+			ChainStart = ChainEnd;
 		}
 		m_vAttempts = vKept;
 		SplitRunsAtGaps();
+		return Dropped;
+	}
+
+	int CSplitsData::ForgetPoint(int Point)
+	{
+		return ForgetPoints({Point});
 	}
 
 	void CSplitsData::DeleteGate(int GateId)
 	{
-		if(m_vGates.size() == 1 && m_vGates[0].m_Id == GateId)
-		{
-			DeleteAllGates();
-			return;
-		}
 		ForgetPoint(GatePoint(GateId));
 		m_vGates.erase(std::remove_if(m_vGates.begin(), m_vGates.end(), [&](const SGate &Gate) { return Gate.m_Id == GateId; }), m_vGates.end());
 	}
 
-	namespace
+	std::set<int> CSplitsData::AllGatePoints() const
 	{
-		bool CameFromGates(const SAttempt &Attempt)
+		std::set<int> Points;
+		for(const SGate &Gate : m_vGates)
+			Points.insert(GatePoint(Gate.m_Id));
+		// times that touch a checkpoint left over from an older version are merged too
+		for(const SAttempt &Attempt : m_vAttempts)
 		{
-			return Attempt.m_FromGate || IsGate(Attempt.m_From) || IsGate(Attempt.m_To);
+			if(IsGate(Attempt.m_From))
+				Points.insert(Attempt.m_From);
+			if(IsGate(Attempt.m_To))
+				Points.insert(Attempt.m_To);
 		}
-	} // namespace
+		return Points;
+	}
 
 	void CSplitsData::DeleteAllGates()
 	{
-		m_vAttempts.erase(std::remove_if(m_vAttempts.begin(), m_vAttempts.end(), CameFromGates), m_vAttempts.end());
+		ForgetPoints(AllGatePoints());
 		m_vGates.clear();
-		SplitRunsAtGaps();
 	}
 
 	int CSplitsData::GateDeleteCount(int GateId) const
 	{
-		if(m_vGates.size() == 1 && m_vGates[0].m_Id == GateId)
-			return AllGatesDeleteCount();
-		return 0;
+		CSplitsData Copy = *this;
+		return Copy.ForgetPoint(GatePoint(GateId));
 	}
 
 	int CSplitsData::AllGatesDeleteCount() const
 	{
-		return (int)std::count_if(m_vAttempts.begin(), m_vAttempts.end(), CameFromGates);
+		CSplitsData Copy = *this;
+		return Copy.ForgetPoints(AllGatePoints());
 	}
 
 	std::vector<CSplitsData::SRunPoint> CSplitsData::FinishedRuns(bool IncludePractice) const

@@ -68,7 +68,7 @@ void CSplits::OnConsoleInit()
 {
 	Console()->Register("dt_splits_edit", "", CFGFLAG_CLIENT, ConEdit, this, "Toggle the edit mode for your split checkpoints");
 	Console()->Register("dt_splits_source_cycle", "", CFGFLAG_CLIENT, ConSourceCycle, this, "Cycle the split points: map time checkpoints + yours, only map time checkpoints, only yours");
-	Console()->Register("dt_splits_delete_all_checkpoints", "", CFGFLAG_CLIENT, ConDeleteAllGates, this, "Delete all your checkpoints on this map and the times that came from them");
+	Console()->Register("dt_splits_delete_all_checkpoints", "", CFGFLAG_CLIENT, ConDeleteAllGates, this, "Delete all your checkpoints on this map, merging their times into the map's time checkpoints");
 }
 
 void CSplits::ConSourceCycle(IConsole::IResult *pResult, void *pUserData)
@@ -458,12 +458,11 @@ void CSplits::OnPoint(int Point, double Tick)
 	Attempt.m_From = m_LastPoint;
 	Attempt.m_To = Point;
 	Attempt.m_Millis = (int)std::lround((Tick - m_LastPointTick) * 1000.0 / TickSpeed);
-	if(Attempt.m_Millis > 0)
-	{
-		m_Data.m_vAttempts.push_back(Attempt);
-		Append(Attempt);
-		m_AnalysisDirty = true;
-	}
+	// two points crossed at the same moment still give a (0 ms) segment, otherwise the run would have a gap
+	Attempt.m_Millis = std::max(Attempt.m_Millis, 0);
+	m_Data.m_vAttempts.push_back(Attempt);
+	Append(Attempt);
+	m_AnalysisDirty = true;
 
 	m_LastPoint = Point;
 	m_LastPointTick = Tick;
@@ -1074,7 +1073,7 @@ void CSplits::RenderEditHelp()
 		if(m_PendingDeleteGate >= 0 && time_get() < m_PendingDeleteUntil)
 		{
 			char aBuf[160];
-			str_format(aBuf, sizeof(aBuf), DtLocalize("Right click again: deletes your last checkpoint and %d times that came from your checkpoints"), m_Data.GateDeleteCount(m_PendingDeleteGate));
+			str_format(aBuf, sizeof(aBuf), DtLocalize("Right click again: deletes this checkpoint and %d times that can't be merged"), m_Data.GateDeleteCount(m_PendingDeleteGate));
 			DrawCentered(110.0f, 7.0f, aBuf, ColorRGBA(1.0f, 0.4f, 0.4f, 1.0f));
 		}
 	}
