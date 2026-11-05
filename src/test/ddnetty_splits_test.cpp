@@ -497,3 +497,37 @@ TEST(DdnettySplits, EntryFlagsComeFromTheFirstPiece)
 	Options.m_CountDummy = false;
 	EXPECT_EQ(Data.EffectiveAttempts(Options).size(), 1u);
 }
+
+TEST(DdnettySplits, Refs)
+{
+	CSplitsRefs Refs;
+	EXPECT_TRUE(Refs.ParseLine("# comment"));
+	EXPECT_TRUE(Refs.ParseLine("ref 141440 2024-09-05 3 6740 21780 -1 Oak"));
+	EXPECT_TRUE(Refs.ParseLine("ref 136480 2026-11-04 3 6563 20316 36012 1000"));
+	EXPECT_TRUE(Refs.ParseLine("ref 146100 2023-08-01 0 Poop the second"));
+	EXPECT_TRUE(Refs.ParseLine("segbest T6 T7 9060 2026-03-01 Poop"));
+	EXPECT_TRUE(Refs.ParseLine("segbest T6 T7 9100 2026-03-02 slower"));
+	EXPECT_FALSE(Refs.ParseLine("ref 141440 2024-09-05 3 6740 21780 Oak"));
+	EXPECT_FALSE(Refs.ParseLine("segbest T6 T6 9060 2026-03-01 x"));
+	EXPECT_FALSE(Refs.ParseLine("ref 100 2024-01-01 1 50"));
+
+	ASSERT_EQ(Refs.m_vRuns.size(), 3u);
+	EXPECT_EQ(Refs.m_vRuns[0].m_Name, "1000"); // a name made of digits, fastest first
+	EXPECT_EQ(Refs.FindRun("")->m_Name, "1000");
+	EXPECT_EQ(Refs.FindRun("Poop the second")->m_Millis, 146100);
+	EXPECT_EQ(Refs.FindRun("nobody")->m_Name, "1000");
+
+	const SRefRun *pOak = Refs.FindRun("Oak");
+	ASSERT_TRUE(pOak);
+	EXPECT_EQ(CSplitsRefs::TimeAt(*pOak, POINT_START), 0);
+	EXPECT_EQ(CSplitsRefs::TimeAt(*pOak, 1), 21780);
+	EXPECT_EQ(CSplitsRefs::TimeAt(*pOak, 2), -1);
+	EXPECT_EQ(CSplitsRefs::TimeAt(*pOak, 5), -1);
+	EXPECT_EQ(CSplitsRefs::TimeAt(*pOak, G1), -1);
+	EXPECT_EQ(CSplitsRefs::TimeAt(*pOak, POINT_FINISH), 141440);
+
+	ASSERT_EQ(Refs.m_vSegments.size(), 1u);
+	EXPECT_EQ(Refs.FindSegment(6, 7)->m_Millis, 9060);
+	EXPECT_EQ(Refs.FindSegment(6, 7)->m_Name, "Poop");
+	EXPECT_EQ(Refs.FindSegment(7, 8), nullptr);
+}

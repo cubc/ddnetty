@@ -238,6 +238,42 @@ namespace DdnettySplits
 		void SplitRunsAtGaps();
 	};
 
+	// times of other players (top players of the map), from the public DDNet database:
+	// ddnetty/splits/refs/<map>.txt, written by scripts/ddnetty_refs.py
+	struct SRefRun
+	{
+		int m_Millis = -1; // finish time
+		std::string m_Date;
+		std::vector<int> m_vCps; // run time at the map's time checkpoints T0, T1, ... (-1 = not passed)
+		std::string m_Name;
+	};
+
+	struct SRefSegment
+	{
+		int m_From = POINT_NONE;
+		int m_To = POINT_NONE;
+		int m_Millis = -1; // best time of anyone else in this segment
+		std::string m_Date;
+		std::string m_Name;
+	};
+
+	class CSplitsRefs
+	{
+	public:
+		std::vector<SRefRun> m_vRuns; // fastest first
+		std::vector<SRefSegment> m_vSegments;
+
+		void Clear();
+		// "ref <ms> <date> <num cps> <cp ms>... <name>", "segbest <from> <to> <ms> <date> <name>", "#" comments
+		bool ParseLine(const char *pLine);
+		bool Empty() const { return m_vRuns.empty() && m_vSegments.empty(); }
+		// the run of this player, or the fastest if the name is empty or not found
+		const SRefRun *FindRun(const char *pName) const;
+		const SRefSegment *FindSegment(int From, int To) const;
+		// run time of a reference at a point: 0 at the start, the finish time at the finish, -1 if unknown
+		static int TimeAt(const SRefRun &Run, int Point);
+	};
+
 } // namespace DdnettySplits
 
 #endif // GAME_DDNETTY_SPLITS_H

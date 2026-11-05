@@ -720,3 +720,39 @@ DDNetty messages
 [DDNetty]
 Show "Focus ON/OFF" when toggling
 == Mostrar "Focus ON/OFF" ao alternar
+
+[DDNetty]
+%s → %s  %s  best of all (before %s, %s)
+== %s → %s  %s  melhor de todos (antes %s, %s)
+
+[DDNetty]
+%s → %s  %s  new best (%s), loose entry
+== %s → %s  %s  novo melhor (%s), entrada solta
+
+[DDNetty]
+%s vs %s
+== %s vs %s
+
+[DDNetty]
+Top player
+== Top player
+
+[DDNetty]
+Reload
+== Recarregar
+
+[DDNetty]
+No reference file: %s
+== Sem ficheiro de referência: %s
+
+[DDNetty]
+Best of all
+== Melhor de todos
+
+[DDNetty]
+All attempts (focused ones in brackets: the average and the variation use those)
+== Todas as tentativas (as focadas entre parênteses: a média e a variação usam essas)
+
+[DDNetty]
+Fastest time of anyone else in this segment, from the map's reference file. Gold: yours is faster.
+== Tempo mais rápido de outro jogador neste troço, do ficheiro de referência do mapa. Dourado: o teu é mais rápido.

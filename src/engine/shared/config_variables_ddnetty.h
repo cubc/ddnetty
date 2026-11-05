@@ -18,7 +18,8 @@ MACRO_CONFIG_INT(DtSplitsSource, dt_splits_source, 0, 0, 2, CFGFLAG_CLIENT | CFG
 MACRO_CONFIG_INT(DtSplitsAverage, dt_splits_average, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Compare against the average of your last attempts instead of your best")
 MACRO_CONFIG_INT(DtSplitsPractice, dt_splits_practice, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Include practice attempts in the split stats")
 MACRO_CONFIG_INT(DtSplitsShowGates, dt_splits_show_gates, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show your split checkpoints on the map")
-MACRO_CONFIG_INT(DtSplitsTargetMode, dt_splits_target_mode, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target time for the prediction (0 = server record, 1 = your best, 2 = custom time per map)")
+MACRO_CONFIG_INT(DtSplitsTargetMode, dt_splits_target_mode, 0, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target time for the prediction (0 = server record, 1 = your best, 2 = custom time per map, 3 = a top player from the map's reference file)")
+MACRO_CONFIG_STR(DtSplitsRefPlayer, dt_splits_ref_player, 32, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Top player compared with in target mode 3 (empty = the fastest in the reference file)")
 MACRO_CONFIG_INT(DtSplitsWarning, dt_splits_warning, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show a message when the prediction is slower than the target time")
 MACRO_CONFIG_STR(DtSplitsMessage, dt_splits_message, 64, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Message shown when the prediction is slower than the target time (empty = default)")
 MACRO_CONFIG_INT(DtSplitsHudIdeal, dt_splits_hud_ideal, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show your ideal run (sum of your best segments) in the splits HUD box")
@@ -32,7 +33,7 @@ MACRO_CONFIG_INT(DtSplitsFocusMargin, dt_splits_focus_margin, 3000, 0, 600000, C
 MACRO_CONFIG_INT(DtSplitsRunEntriesOnly, dt_splits_run_entries_only, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best segments and the ideal run only count segments entered like in a real run (not after a mid start, going back, waiting or crossing again)")
 MACRO_CONFIG_INT(DtSplitsWaitLimit, dt_splits_wait_limit, 15, 0, 600, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Seconds over your best before a point after which the next segment counts as entered after waiting (0 = off)")
 MACRO_CONFIG_INT(DtSplitsCountDummy, dt_splits_count_dummy, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Count runs made with the dummy or switching between your tees")
-MACRO_CONFIG_INT(DtSplitsPbNotice, dt_splits_pb_notice, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show a message when you make a new best segment")
+MACRO_CONFIG_INT(DtSplitsPbNotice, dt_splits_pb_notice, 2, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Message on a new best segment (0 = off, 1 = your best, 2 = also when it beats everyone in the reference file)")
 MACRO_CONFIG_INT(DtSplitsPbSound, dt_splits_pb_sound, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Play a sound with the new best segment message")
 
 // BestClient network
