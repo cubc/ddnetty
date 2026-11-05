@@ -182,6 +182,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Particles.m_RenderExplosions,
 					      &m_NamePlates,
 					      &m_Splits, // ddnetty
+					      &m_Focus, // ddnetty
 					      &m_GifBubbles, // bestclient
 					      &m_ChatBubbles, // bestclient
 					      &m_PhysicBalls, // bestclient

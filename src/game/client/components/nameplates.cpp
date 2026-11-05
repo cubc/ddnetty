@@ -1115,6 +1115,8 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	if(g_Config.m_ClFocusMode && g_Config.m_ClFocusModeHideNames)
 		return;
 	// bestclient
+	if(GameClient()->m_Focus.HidesTee(pPlayerInfo->m_ClientId)) // ddnetty: focus mode
+		return;
 
 	Data.m_ShowName = pPlayerInfo->m_Local ? g_Config.m_ClNamePlatesOwn : g_Config.m_ClNamePlates;
 	str_copy(Data.m_aName, ClientData.m_aName);

@@ -53,6 +53,8 @@ void CItems::RenderProjectile(const CProjectileData *pCurrent, int ItemId, const
 		s_LastGameTickTime = Client()->GameTickTime(g_Config.m_ClDummy);
 
 	bool IsOtherTeam = (pCurrent->m_ExtraInfo && pCurrent->m_Owner >= 0 && GameClient()->IsOtherTeam(pCurrent->m_Owner));
+	if(pCurrent->m_ExtraInfo && GameClient()->m_Focus.HidesTee(pCurrent->m_Owner)) // ddnetty
+		return;
 
 	int PredictionTick = Client()->GetPredictionTick();
 
@@ -322,6 +324,8 @@ void CItems::RenderLaser(const CLaserData *pCurrent, bool IsPredicted)
 	}
 
 	bool IsOtherTeam = (pCurrent->m_ExtraInfo && pCurrent->m_Owner >= 0 && GameClient()->IsOtherTeam(pCurrent->m_Owner));
+	if(pCurrent->m_ExtraInfo && GameClient()->m_Focus.HidesTee(pCurrent->m_Owner)) // ddnetty
+		return;
 
 	float Alpha = IsOtherTeam ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.f;
 
@@ -801,6 +805,8 @@ void CItems::ReconstructSmokeTrail(const CProjectileData *pCurrent, int DestroyT
 
 	float Gt = (Client()->PrevGameTick(g_Config.m_ClDummy) - pCurrent->m_StartTick) / (float)Client()->GameTickSpeed() + Client()->GameTickTime(g_Config.m_ClDummy);
 
+	if(pCurrent->m_ExtraInfo && GameClient()->m_Focus.HidesTee(pCurrent->m_Owner)) // ddnetty
+		return;
 	float Alpha = 1.f;
 	if(pCurrent->m_ExtraInfo && pCurrent->m_Owner >= 0 && GameClient()->IsOtherTeam(pCurrent->m_Owner))
 	{
