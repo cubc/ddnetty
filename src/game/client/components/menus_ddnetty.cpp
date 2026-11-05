@@ -321,6 +321,90 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 		Ui()->DoLabel(&Row, aPending, 12.0f, TEXTALIGN_ML);
 	}
 
+	// focused runs: count from a moment on, and the average only from runs close to your best
+	MainView.HSplitTop(Spacing, nullptr, &MainView);
+	MainView.HSplitTop(LineSize, &Row, &MainView);
+	Row.VSplitLeft(115.0f, &Label, &Row);
+	Ui()->DoLabel(&Label, DtLocalize("Focused runs:"), FontSize, TEXTALIGN_ML);
+	static CButtonContainer s_SinceButton, s_SinceClearButton;
+	Row.VSplitLeft(140.0f, &Button, &Row);
+	if(DoButton_Menu(&s_SinceButton, DtLocalize("Count from now"), 0, &Button))
+		Splits.SetSince(time_timestamp());
+	GameClient()->m_Tooltips.DoToolTip(&s_SinceButton, &Button, DtLocalize("Stats, best segments and the ideal run only use the times from now on. Nothing is deleted."));
+	if(Splits.Since() > 0)
+	{
+		Row.VSplitLeft(5.0f, nullptr, &Row);
+		Row.VSplitLeft(100.0f, &Button, &Row);
+		if(DoButton_Menu(&s_SinceClearButton, DtLocalize("Show all"), 0, &Button))
+			Splits.SetSince(0);
+		char aDate[64], aSince[96];
+		str_timestamp_ex((time_t)Splits.Since(), aDate, sizeof(aDate), "%d/%m %H:%M");
+		str_format(aSince, sizeof(aSince), DtLocalize("since %s"), aDate);
+		Row.VSplitLeft(8.0f, nullptr, &Row);
+		Row.VSplitLeft(110.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, aSince, 12.0f, TEXTALIGN_ML);
+	}
+	{
+		// the margin is chosen per map, in seconds; empty uses the default
+		Row.VSplitLeft(15.0f, nullptr, &Row);
+		Row.VSplitLeft(150.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, DtLocalize("Behind my best by at most"), 12.0f, TEXTALIGN_ML);
+		static CLineInputBuffered<12> s_MarginInput;
+		static int s_MarginShown = -2;
+		if(s_MarginShown != Splits.FocusMarginOnMap() && !s_MarginInput.IsActive())
+		{
+			char aSeconds[16] = "";
+			if(Splits.FocusMarginOnMap() >= 0)
+				str_format(aSeconds, sizeof(aSeconds), "%g", Splits.FocusMarginOnMap() / 1000.0);
+			s_MarginInput.Set(aSeconds);
+			s_MarginShown = Splits.FocusMarginOnMap();
+		}
+		char aDefault[32];
+		str_format(aDefault, sizeof(aDefault), "%g", g_Config.m_DtSplitsFocusMargin / 1000.0);
+		s_MarginInput.SetEmptyText(aDefault);
+		Row.VSplitLeft(50.0f, &Button, &Row);
+		if(Ui()->DoEditBox(&s_MarginInput, &Button, FontSize))
+		{
+			if(s_MarginInput.IsEmpty())
+			{
+				Splits.SetFocusMarginOnMap(-1);
+			}
+			else
+			{
+				char *pEnd = nullptr;
+				const double Seconds = std::strtod(s_MarginInput.GetString(), &pEnd);
+				if(pEnd != s_MarginInput.GetString() && *pEnd == '\0' && Seconds >= 0.0 && Seconds <= 600.0)
+					Splits.SetFocusMarginOnMap((int)std::lround(Seconds * 1000.0));
+			}
+			s_MarginShown = Splits.FocusMarginOnMap();
+		}
+		GameClient()->m_Tooltips.DoToolTip(&s_MarginInput, &Button, DtLocalize("Seconds, on this map. The average and the variation only count segments you entered at most this far behind your best run. 0 turns it off, empty uses the default."));
+		Row.VSplitLeft(4.0f, nullptr, &Row);
+		Row.VSplitLeft(14.0f, &Label, &Row);
+		Ui()->DoLabel(&Label, "s", 12.0f, TEXTALIGN_ML);
+	}
+
+	MainView.HSplitTop(Spacing, nullptr, &MainView);
+	MainView.HSplitTop(LineSize, &Row, &MainView);
+	Row.VSplitLeft(115.0f, nullptr, &Row);
+	static int s_RunEntriesCheckbox, s_CountDummyCheckbox, s_PbNoticeCheckbox, s_PbSoundCheckbox;
+	Row.VSplitLeft(200.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_RunEntriesCheckbox, DtLocalize("Best only from real runs"), g_Config.m_DtSplitsRunEntriesOnly, &Button))
+		g_Config.m_DtSplitsRunEntriesOnly ^= 1;
+	GameClient()->m_Tooltips.DoToolTip(&s_RunEntriesCheckbox, &Button, DtLocalize("Best segments and the ideal run leave out segments entered after starting in the middle, going back, waiting or crossing the checkpoint again."));
+	Row.VSplitLeft(150.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_CountDummyCheckbox, DtLocalize("Count dummy"), g_Config.m_DtSplitsCountDummy, &Button))
+		g_Config.m_DtSplitsCountDummy ^= 1;
+	Row.VSplitLeft(180.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_PbNoticeCheckbox, DtLocalize("New best message"), g_Config.m_DtSplitsPbNotice, &Button))
+		g_Config.m_DtSplitsPbNotice ^= 1;
+	if(g_Config.m_DtSplitsPbNotice)
+	{
+		Row.VSplitLeft(100.0f, &Button, &Row);
+		if(DoButton_CheckBox(&s_PbSoundCheckbox, DtLocalize("Sound"), g_Config.m_DtSplitsPbSound, &Button))
+			g_Config.m_DtSplitsPbSound ^= 1;
+	}
+
 	// target time for the prediction
 	MainView.HSplitTop(Spacing, nullptr, &MainView);
 	MainView.HSplitTop(LineSize, &Row, &MainView);

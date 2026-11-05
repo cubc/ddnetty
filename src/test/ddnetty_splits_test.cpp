@@ -373,3 +373,127 @@ TEST(DdnettySplits, SegmentDemosFlag)
 	Data.Clear();
 	EXPECT_FALSE(Data.m_SegmentDemos);
 }
+
+TEST(DdnettySplits, EntryFlagsRoundTrip)
+{
+	CSplitsData Data;
+	SAttempt Attempt = Att(4, 1000, 2, 3, 900, true);
+	Attempt.m_Flags = ATTFLAG_AFTER_BACK | ATTFLAG_DUMMY;
+	Data.m_vAttempts.push_back(Attempt);
+	Data.m_Since = 123456;
+	Data.m_FocusMarginMillis = 2500;
+
+	CSplitsData Loaded;
+	const std::string Text = Data.Serialize();
+	size_t Pos = 0;
+	while(Pos < Text.size())
+	{
+		size_t End = Text.find('\n', Pos);
+		EXPECT_TRUE(Loaded.ParseLine(Text.substr(Pos, End - Pos).c_str()));
+		Pos = End == std::string::npos ? Text.size() : End + 1;
+	}
+	ASSERT_EQ(Loaded.m_vAttempts.size(), 1u);
+	EXPECT_TRUE(Loaded.m_vAttempts[0].m_Practice);
+	EXPECT_EQ(Loaded.m_vAttempts[0].m_Flags, ATTFLAG_AFTER_BACK | ATTFLAG_DUMMY);
+	EXPECT_EQ(Loaded.m_Since, 123456);
+	EXPECT_EQ(Loaded.m_FocusMarginMillis, 2500);
+
+	// files without the new lines keep the defaults
+	CSplitsData Old;
+	EXPECT_TRUE(Old.ParseLine("att 1 1000 0 S F 5000"));
+	EXPECT_EQ(Old.m_vAttempts[0].m_Flags, 0);
+	EXPECT_EQ(Old.m_Since, 0);
+	EXPECT_EQ(Old.m_FocusMarginMillis, -1);
+	EXPECT_FALSE(Old.ParseLine("focus -5"));
+}
+
+TEST(DdnettySplits, SinceAndDummyFilters)
+{
+	CSplitsData Data;
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, POINT_FINISH, 5000));
+	Data.m_vAttempts.push_back(Att(2, 200, POINT_START, POINT_FINISH, 6000));
+	SAttempt Dummy = Att(3, 300, POINT_START, POINT_FINISH, 4000);
+	Dummy.m_Flags = ATTFLAG_DUMMY;
+	Data.m_vAttempts.push_back(Dummy);
+
+	SOptions Options;
+	EXPECT_EQ(Data.Analyze(Options).m_BestFinished, 4000);
+	Options.m_CountDummy = false;
+	EXPECT_EQ(Data.Analyze(Options).m_BestFinished, 5000);
+	Options.m_Since = 150;
+	EXPECT_EQ(Data.Analyze(Options).m_BestFinished, 6000);
+}
+
+TEST(DdnettySplits, FocusedRuns)
+{
+	// route S -> T0 -> F, best run 10 + 10
+	CSplitsData Data;
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, 0, 10000));
+	Data.m_vAttempts.push_back(Att(1, 100, 0, POINT_FINISH, 10000));
+	// entered T0 2 s behind: focused with a 3 s margin
+	Data.m_vAttempts.push_back(Att(2, 200, POINT_START, 0, 12000));
+	Data.m_vAttempts.push_back(Att(2, 200, 0, POINT_FINISH, 11000));
+	// entered T0 10 s behind: not focused
+	Data.m_vAttempts.push_back(Att(3, 300, POINT_START, 0, 20000));
+	Data.m_vAttempts.push_back(Att(3, 300, 0, POINT_FINISH, 15000));
+	// started at T0 (practicing the part): loose entry, but a very fast time
+	SAttempt Mid = Att(4, 400, 0, POINT_FINISH, 9000);
+	Mid.m_Flags = ATTFLAG_MID_START;
+	Data.m_vAttempts.push_back(Mid);
+
+	SOptions Options;
+	Options.m_FocusMarginMillis = 0;
+	{
+		const SAnalysis Analysis = Data.Analyze(Options);
+		const SSegmentStats *pStats = Analysis.Find(0, POINT_FINISH);
+		ASSERT_TRUE(pStats);
+		EXPECT_EQ(pStats->m_Count, 4);
+		EXPECT_EQ(pStats->m_Best, 9000);
+		EXPECT_EQ(pStats->m_Focused, 3); // the mid start never counts for the average
+		EXPECT_EQ(pStats->m_Mean, 12000);
+		EXPECT_EQ(pStats->m_Last, 9000);
+	}
+	Options.m_FocusMarginMillis = 3000;
+	{
+		const SAnalysis Analysis = Data.Analyze(Options);
+		const SSegmentStats *pStats = Analysis.Find(0, POINT_FINISH);
+		ASSERT_TRUE(pStats);
+		EXPECT_EQ(pStats->m_Focused, 2);
+		EXPECT_EQ(pStats->m_Mean, 10500);
+		EXPECT_EQ(pStats->m_Best, 9000);
+		EXPECT_EQ(Analysis.m_BuiltRun, 10000 + 9000);
+		// the first segment is always entered right at the start
+		EXPECT_EQ(Analysis.Find(POINT_START, 0)->m_Focused, 3);
+		// entry times
+		ASSERT_EQ(Analysis.m_vAttempts.size(), 7u);
+		EXPECT_EQ(Analysis.m_vAttempts[3].m_EntryMillis, 12000);
+		EXPECT_EQ(Analysis.m_vAttempts[6].m_EntryMillis, -1);
+	}
+	Options.m_RunEntriesOnly = true;
+	{
+		const SAnalysis Analysis = Data.Analyze(Options);
+		EXPECT_EQ(Analysis.Find(0, POINT_FINISH)->m_Best, 10000);
+		EXPECT_EQ(Analysis.m_BuiltRun, 20000);
+	}
+}
+
+TEST(DdnettySplits, EntryFlagsComeFromTheFirstPiece)
+{
+	// a gate inside the segment: with gates off the two pieces are merged,
+	// how the segment was entered comes from the first one, the dummy flag from any
+	CSplitsData Data;
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, 0, 1000));
+	SAttempt A = Att(1, 100, 0, G1, 1000);
+	SAttempt B = Att(1, 100, G1, POINT_FINISH, 1000);
+	B.m_Flags = ATTFLAG_LONG_WAIT | ATTFLAG_SWITCHED;
+	Data.m_vAttempts.push_back(A);
+	Data.m_vAttempts.push_back(B);
+
+	SOptions Options;
+	Options.m_UseGates = false;
+	const std::vector<SEffectiveAttempt> vAttempts = Data.EffectiveAttempts(Options);
+	ASSERT_EQ(vAttempts.size(), 2u);
+	EXPECT_EQ(vAttempts[1].m_Attempt.m_Flags, ATTFLAG_SWITCHED);
+	Options.m_CountDummy = false;
+	EXPECT_EQ(Data.EffectiveAttempts(Options).size(), 1u);
+}
