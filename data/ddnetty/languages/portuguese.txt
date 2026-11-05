@@ -520,3 +520,55 @@ Safety (lower ping)
 [DDNetty]
 Below your real ping it acks snapshots still on their way. Safety 0 goes lowest but can drop inputs; it backs off by itself if that happens.
 == Abaixo do seu ping real, ele confirma snapshots que ainda estão chegando. Segurança 0 vai mais baixo mas pode perder input; se acontecer, ele recua sozinho.
+
+[DDNetty]
+Save demos of the best segments
+== Salvar demos dos melhores trechos
+
+[DDNetty]
+Every new best segment is cut out of the replay recorder into demos/segments when the run ends. Has to be turned on for each map too.
+== Cada novo melhor trecho é cortado do gravador de replays para demos/segments quando a tentativa acaba. Também precisa ser ligado em cada mapa.
+
+[DDNetty]
+On this map
+== Neste mapa
+
+[DDNetty]
+Build the ideal run demo
+== Montar a demo da run ideal
+
+[DDNetty]
+When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ideal.
+== Quando todos os trechos do percurso têm demo, eles são emendados numa demo só da sua run ideal (com o seu duo), em demos/ideal.
+
+[DDNetty]
+Open folder
+== Abrir pasta
+
+[DDNetty]
+Build now
+== Montar agora
+
+[DDNetty]
+%d segment demos waiting
+== %d demos de trecho na fila
+
+[DDNetty]
+Ideal run demo: needs one complete run first
+== Demo da run ideal: precisa de uma run completa antes
+
+[DDNetty]
+Ideal run demo: %d of %d segments still without a demo
+== Demo da run ideal: %d de %d trechos ainda sem demo
+
+[DDNetty]
+Ideal run demo: building...
+== Demo da run ideal: montando...
+
+[DDNetty]
+Ideal run demo: %s saved
+== Demo da run ideal: %s salva
+
+[DDNetty]
+Ideal run demo failed: %s
+== Demo da run ideal falhou: %s

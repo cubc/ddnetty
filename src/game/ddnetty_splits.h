@@ -121,6 +121,7 @@ namespace DdnettySplits
 		std::vector<SGate> m_vGates;
 		std::vector<SAttempt> m_vAttempts;
 		int m_TargetMillis = -1; // custom target time for this map, -1 if not set
+		bool m_SegmentDemos = false; // save a demo of every new best segment on this map ("segdemos 1")
 
 		void Clear();
 

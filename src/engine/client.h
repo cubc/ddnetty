@@ -7,6 +7,7 @@
 #include "message.h"
 
 #include <base/hash.h>
+#include <base/types.h>
 
 #include <engine/client/enums.h>
 #include <engine/friends.h>
@@ -16,13 +17,16 @@
 #include <generated/protocol7.h>
 
 #include <functional>
+#include <memory>
 #include <optional>
+#include <vector>
 
 #define CONNECTLINK_DOUBLE_SLASH "ddnet://"
 #define CONNECTLINK_NO_SLASH "ddnet:"
 
 class CSnapshot;
 class CSnapshotBuffer;
+class IJob;
 class IMap;
 struct SWarning;
 
@@ -344,6 +348,25 @@ public:
 	virtual void DemoSliceEnd() = 0;
 	virtual bool DemoSlice(const char *pDstPath, CLIENTFUNC_FILTER pfnFilter, void *pUser, CLIENTFUNC_SNAPSHOT pfnSnapshot = nullptr, void *pSnapshotUser = nullptr) = 0;
 
+	// ddnetty: cut pieces out of the replay recorder's file in the background (the recorder is
+	// restarted once for all of them); the jobs say when each file is ready
+	struct SReplaySlice
+	{
+		int m_StartTick;
+		int m_EndTick;
+		char m_aDst[IO_MAX_PATH_LENGTH];
+	};
+	virtual std::vector<std::shared_ptr<IJob>> DemoRecorder_SaveReplaySlices(const std::vector<SReplaySlice> &vSlices) = 0;
+	// ddnetty: every snapshot of a demo (unpacked), and writing a demo from snapshots;
+	// both are safe to call from a job thread, like the replay slicing
+	struct SDemoSnapshot
+	{
+		int m_Tick;
+		std::vector<unsigned char> m_vData;
+	};
+	virtual bool DemoReadSnapshots(const char *pPath, std::vector<SDemoSnapshot> &vOut) = 0;
+	virtual bool DemoWriteSnapshots(const char *pDst, const char *pMapFromDemo, const std::vector<SDemoSnapshot> &vSnapshots) = 0;
+
 	enum class EInfoState
 	{
 		LOADING,
@@ -413,6 +436,9 @@ public:
 	virtual void SetConnectInfo(const NETADDR *pAddress) = 0;
 
 	virtual void OnConsoleInit() = 0;
+
+	// ddnetty: keep the replay recorder running even with cl_replays off (segment demos)
+	virtual bool WantReplayRecorder() const { return false; }
 
 	virtual void OnRconType(bool UsernameReq) = 0;
 	virtual void OnRconLine(const char *pLine) = 0;

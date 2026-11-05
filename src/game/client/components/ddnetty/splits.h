@@ -13,8 +13,12 @@
 #include <game/client/ui_rect.h>
 #include <game/ddnetty_splits.h>
 
+#include <memory>
 #include <string>
 #include <vector>
+
+class IJob;
+class CIdealDemoJob;
 
 class CSplits : public CComponent
 {
@@ -48,6 +52,18 @@ public:
 	int PlayerBestMillis() const; // personal best from the server, -1 if unknown
 	int TargetMillis() const; // the time the prediction is compared with, -1 if unknown
 	const char *WarningMessage() const;
+
+	// segment demos: a demo of every new best segment, cut out of the replay recorder
+	bool SegmentDemosOnMap() const { return m_Data.m_SegmentDemos; }
+	void SetSegmentDemosOnMap(bool On);
+	bool SegmentDemosActive() const;
+	bool WantsReplayRecorder() const { return HasMap() && SegmentDemosActive(); }
+	int PendingSegmentDemos() const { return (int)(m_vPendingClips.size() + m_vClipJobs.size()); }
+	// the ideal run demo: your best segments stitched together
+	void RequestIdealDemo(bool Manual = false);
+	bool IdealDemoBuilding() const { return m_pIdealJob != nullptr; }
+	const char *IdealDemoStatus() const { return m_aIdealStatus; }
+	const char *SegmentFolder() const { return m_aSegmentFolder; }
 
 	// used by other components
 	bool HidesServerTimeCpDiff() const;
@@ -118,6 +134,46 @@ private:
 	int64_t m_NoticeUntil = 0;
 	vec2 m_EditCameraOffset = vec2(0.0f, 0.0f); // added to the normal camera center
 	vec2 m_EditCursor = vec2(0.0f, 0.0f); // relative to the camera center, in world units
+
+	// segment demos
+	struct SPendingClip
+	{
+		int m_From = DdnettySplits::POINT_NONE;
+		int m_To = DdnettySplits::POINT_NONE;
+		int m_Millis = 0;
+		double m_StartTick = 0.0; // when the segment started (fractional game tick)
+		double m_EndTick = 0.0;
+		int m_MainId = -1; // the tee whose time it is
+		int m_DuoId = -1; // its team mate, if any
+		std::string m_MainName;
+		std::string m_DuoName;
+		bool m_Practice = false;
+		int64_t m_Timestamp = 0;
+	};
+	struct SClipJob
+	{
+		std::shared_ptr<IJob> m_pJob;
+		SPendingClip m_Clip;
+		std::string m_Demo; // path of the demo being written
+	};
+	char m_aSegmentFolder[IO_MAX_PATH_LENGTH] = "";
+	std::vector<SPendingClip> m_vPendingClips;
+	std::vector<SClipJob> m_vClipJobs;
+	int m_FlushClipsAtTick = -1;
+	void QueueClip(int From, int To, int Millis, double StartTick, double EndTick);
+	void FlushClips();
+	void UpdateClipJobs();
+	void PruneClips(int From, int To);
+	int DuoOf(int ClientId) const;
+	std::shared_ptr<CIdealDemoJob> m_pIdealJob;
+	bool m_IdealAgain = false; // a new segment demo came in while building
+	bool m_IdealManual = false;
+	char m_aIdealStatus[256] = "";
+	void StartIdealDemo();
+	std::shared_ptr<CIdealDemoJob> m_pGhostPending; // ideal run waiting for the ghost recorder to be free
+	void SaveIdealGhost();
+	void UpdateIdealDemo();
+	static void ConBuildIdeal(IConsole::IResult *pResult, void *pUserData);
 
 	void Load();
 	void Save();
