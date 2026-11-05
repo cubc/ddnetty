@@ -625,7 +625,10 @@ void CMenus::RenderSplitsSegments(CUIRect View)
 	}
 
 	// columns: segment (flexible), best, average, variation, last, attempts, best of everyone else, clear button
-	const bool HasRefs = !Splits.Refs().m_vSegments.empty();
+	// only when the reference file has some of these segments (it only knows the map's time checkpoints)
+	bool HasRefs = false;
+	for(const auto *pStats : vpRows)
+		HasRefs = HasRefs || Splits.Refs().FindSegment(pStats->m_From, pStats->m_To) != nullptr;
 	const float aWidths[] = {80.0f, 80.0f, 80.0f, 70.0f, 90.0f, HasRefs ? 130.0f : 0.0f, 70.0f};
 	auto &&SplitColumns = [&](CUIRect Row, CUIRect *pCols) {
 		float Fixed = 0.0f;
@@ -1072,6 +1075,7 @@ namespace
 	const ColorRGBA CHART_ORANGE(1.0f, 0.65f, 0.25f, 1.0f);
 	const ColorRGBA CHART_RED(1.0f, 0.4f, 0.4f, 1.0f);
 	const ColorRGBA CHART_GREY(1.0f, 1.0f, 1.0f, 0.45f);
+	const ColorRGBA CHART_GOLD(1.0f, 0.82f, 0.25f, 1.0f);
 
 	int64_t LocalUtcOffset()
 	{
@@ -1121,6 +1125,9 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 		const int Num = std::max(1, (int)(Length / 8.0f));
 		for(int i = 0; i < Num; i += 2)
 			DrawLine(mix(A, B, (float)i / Num), mix(A, B, std::min(1.0f, (float)(i + 1) / Num)), Width, Color);
+	};
+	auto &&MixColor = [](ColorRGBA A, ColorRGBA B, float T) {
+		return ColorRGBA(A.r + (B.r - A.r) * T, A.g + (B.g - A.g) * T, A.b + (B.b - A.b) * T, A.a + (B.a - A.a) * T);
 	};
 	auto &&DrawDot = [&](vec2 Pos, float Size, ColorRGBA Color) {
 		DrawLine(Pos - vec2(Size / 2.0f, 0.0f), Pos + vec2(Size / 2.0f, 0.0f), Size, Color);
@@ -1322,6 +1329,103 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 		}
 	}
 
+	// --- ideal run over time: a step each time a segment got faster ---
+	{
+		const auto vIdeal = DdnettySplits::CSplitsData::IdealHistory(Analysis);
+		CUIRect Box, Plot, Area;
+		Content.HSplitTop(170.0f, &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			ChartBox(Box, DtLocalize("Ideal run over time"), &Plot);
+			if(vIdeal.empty())
+			{
+				Ui()->DoLabel(&Plot, DtLocalize("Needs one attempt of every segment of your route."), FontSize, TEXTALIGN_MC);
+			}
+			else
+			{
+				int PlayerBest = Splits.PlayerBestMillis();
+				if(PlayerBest < 0)
+					PlayerBest = Analysis.m_BestFinished;
+				const DdnettySplits::SRefRun *pTop = Splits.RefRun();
+				const int TopMillis = pTop ? pTop->m_Millis : -1;
+				int MinMs = INT_MAX, MaxMs = 0;
+				for(const auto &Point : vIdeal)
+				{
+					MinMs = std::min(MinMs, Point.m_Millis);
+					MaxMs = std::max(MaxMs, Point.m_Millis);
+				}
+				for(int Ref : {PlayerBest, TopMillis})
+				{
+					if(Ref > 0)
+					{
+						MinMs = std::min(MinMs, Ref);
+						MaxMs = std::max(MaxMs, Ref);
+					}
+				}
+				const int Pad = std::max(300, (MaxMs - MinMs) / 10);
+				MinMs = std::max(0, MinMs - Pad);
+				MaxMs += Pad;
+				TimeAxis(Plot, MinMs, MaxMs, &Area);
+				const int First = vIdeal.front().m_Attempt;
+				const int Last = std::max(First + 1, (int)Analysis.m_vAttempts.size() - 1);
+				auto &&ToY = [&](int Ms) { return Area.y + Area.h * (1.0f - (float)(Ms - MinMs) / (float)(MaxMs - MinMs)); };
+				auto &&ToX = [&](int Attempt) { return Area.x + Area.w * (Attempt - First) / (float)(Last - First); };
+
+				Graphics()->TextureClear();
+				Graphics()->QuadsBegin();
+				if(TopMillis > 0)
+					DrawDashed(vec2(Area.x, ToY(TopMillis)), vec2(Area.x + Area.w, ToY(TopMillis)), 1.5f, CHART_GOLD);
+				if(PlayerBest > 0)
+					DrawLine(vec2(Area.x, ToY(PlayerBest)), vec2(Area.x + Area.w, ToY(PlayerBest)), 1.0f, ColorRGBA(1.0f, 1.0f, 1.0f, 0.6f));
+				for(size_t i = 0; i < vIdeal.size(); i++)
+				{
+					const float X = ToX(vIdeal[i].m_Attempt);
+					const float NextX = i + 1 < vIdeal.size() ? ToX(vIdeal[i + 1].m_Attempt) : Area.x + Area.w;
+					const float Y = ToY(vIdeal[i].m_Millis);
+					DrawLine(vec2(X, Y), vec2(NextX, Y), 2.0f, CHART_BLUE);
+					if(i + 1 < vIdeal.size())
+						DrawLine(vec2(NextX, Y), vec2(NextX, ToY(vIdeal[i + 1].m_Millis)), 2.0f, CHART_BLUE);
+					const vec2 P(X, Y);
+					DrawDot(P, 4.0f, CHART_BLUE);
+					if(distance(Mouse, P) < 6.0f && Ui()->MouseHovered(&Box))
+					{
+						char aTime[32], aDate[32], aBuf[128];
+						CSplits::FormatMillis(vIdeal[i].m_Millis, aTime, sizeof(aTime));
+						str_timestamp_ex((time_t)vIdeal[i].m_Timestamp, aDate, sizeof(aDate), "%d/%m %H:%M");
+						if(i > 0)
+						{
+							char aDiff[32];
+							CSplits::FormatDiff(vIdeal[i].m_Millis - vIdeal[i - 1].m_Millis, aDiff, sizeof(aDiff));
+							str_format(aBuf, sizeof(aBuf), DtLocalize("%s (%s) · attempt %d · %s"), aTime, aDiff, vIdeal[i].m_Attempt + 1, aDate);
+						}
+						else
+							str_format(aBuf, sizeof(aBuf), DtLocalize("%s · attempt %d · %s"), aTime, vIdeal[i].m_Attempt + 1, aDate);
+						HoverText = aBuf;
+						HoverPos = P;
+					}
+				}
+				Graphics()->QuadsEnd();
+
+				float LegendX = Area.x;
+				const float LegendY = Area.y + Area.h + 1.0f;
+				auto &&Legend = [&](const char *pText, ColorRGBA Color) {
+					SmallText(LegendX, LegendY, pText, Color);
+					LegendX += TextRender()->TextWidth(SmallFont, pText) + 14.0f;
+				};
+				Legend(DtLocalize("— ideal run"), CHART_BLUE);
+				if(PlayerBest > 0)
+					Legend(DtLocalize("— your best"), ColorRGBA(1.0f, 1.0f, 1.0f, 0.8f));
+				if(pTop)
+				{
+					char aTop[96];
+					str_format(aTop, sizeof(aTop), "- - %s", pTop->m_Name.c_str());
+					Legend(aTop, CHART_GOLD);
+				}
+			}
+		}
+	}
+
 	// --- 2: where you lose time ---
 	const auto vLosses = DdnettySplits::CSplitsData::Losses(Analysis);
 	{
@@ -1386,6 +1490,69 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 		}
 	}
 
+	// --- average vs best, every attempt and only the focused ones ---
+	{
+		const auto vGaps = DdnettySplits::CSplitsData::FocusGaps(Analysis);
+		const float BarH = 14.0f;
+		const int NumBars = std::min((int)vGaps.size(), 40);
+		CUIRect Box, Plot;
+		Content.HSplitTop(52.0f + std::max(1, NumBars) * (BarH + 2.0f), &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			ChartBox(Box, DtLocalize("Average − best: every attempt vs focused runs"), &Plot);
+			if(vGaps.empty())
+			{
+				Ui()->DoLabel(&Plot, DtLocalize("Needs a few attempts of each segment."), FontSize, TEXTALIGN_MC);
+			}
+			else
+			{
+				int MaxGap = 1;
+				for(const auto &GapItem : vGaps)
+					MaxGap = std::max({MaxGap, GapItem.m_MeanAll - GapItem.m_Best, GapItem.m_MeanFocused - GapItem.m_Best});
+				CUIRect LegendRow;
+				Plot.HSplitBottom(12.0f, &Plot, &LegendRow);
+				for(int i = 0; i < NumBars; i++)
+				{
+					const auto &GapItem = vGaps[i];
+					CUIRect Line, Name, Bar, Value;
+					Plot.HSplitTop(BarH, &Line, &Plot);
+					Plot.HSplitTop(2.0f, nullptr, &Plot);
+					Line.VSplitLeft(170.0f, &Name, &Bar);
+					Bar.VSplitRight(110.0f, &Bar, &Value);
+					SLabelProperties NameProps;
+					NameProps.m_MaxWidth = Name.w - 6.0f;
+					NameProps.m_EllipsisAtEnd = true;
+					Name.VSplitLeft(4.0f, nullptr, &Name);
+					Ui()->DoLabel(&Name, (Splits.PointName(GapItem.m_From) + " → " + Splits.PointName(GapItem.m_To)).c_str(), SmallFont, TEXTALIGN_ML, NameProps);
+					CUIRect Top, Bottom;
+					Bar.HSplitMid(&Top, &Bottom);
+					const int AllGap = std::max(0, GapItem.m_MeanAll - GapItem.m_Best);
+					const int FocusedGap = GapItem.m_MeanFocused >= 0 ? std::max(0, GapItem.m_MeanFocused - GapItem.m_Best) : -1;
+					CUIRect{Top.x, Top.y + 0.5f, std::max(1.0f, Top.w * AllGap / (float)MaxGap), Top.h - 1.0f}.Draw(CHART_GREY, IGraphics::CORNER_NONE, 0.0f);
+					if(FocusedGap >= 0)
+						CUIRect{Bottom.x, Bottom.y + 0.5f, std::max(1.0f, Bottom.w * FocusedGap / (float)MaxGap), Bottom.h - 1.0f}.Draw(CHART_BLUE, IGraphics::CORNER_NONE, 0.0f);
+					char aAll[32], aFocused[32], aValue[80];
+					CSplits::FormatDiff(AllGap, aAll, sizeof(aAll));
+					if(FocusedGap >= 0)
+						CSplits::FormatDiff(FocusedGap, aFocused, sizeof(aFocused));
+					else
+						str_copy(aFocused, "—");
+					str_format(aValue, sizeof(aValue), "%s / %s", aAll, aFocused);
+					Value.VSplitLeft(6.0f, nullptr, &Value);
+					Ui()->DoLabel(&Value, aValue, SmallFont, TEXTALIGN_ML);
+				}
+				float LegendX = LegendRow.x;
+				auto &&Legend = [&](const char *pText, ColorRGBA Color) {
+					SmallText(LegendX, LegendRow.y + 1.0f, pText, Color);
+					LegendX += TextRender()->TextWidth(SmallFont, pText) + 14.0f;
+				};
+				Legend(DtLocalize("■ every attempt"), CHART_GREY);
+				Legend(DtLocalize("■ focused runs"), CHART_BLUE);
+			}
+		}
+	}
+
 	// --- 3: history of one segment ---
 	{
 		if(!Analysis.Find(m_SplitsAnalysisSegmentFrom, m_SplitsAnalysisSegmentTo) && !vLosses.empty())
@@ -1424,6 +1591,13 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 				auto &&ToY = [&](int Ms) { return Area.y + Area.h * (1.0f - (float)(Ms - MinMs) / (float)(MaxMs - MinMs)); };
 				auto &&ToX = [&](size_t i) { return vHistory.size() == 1 ? Area.x + Area.w / 2.0f : Area.x + Area.w * i / (float)(vHistory.size() - 1); };
 
+				// band of the focused runs: average ± variation
+				if(const DdnettySplits::SSegmentStats *pStats = Analysis.Find(m_SplitsAnalysisSegmentFrom, m_SplitsAnalysisSegmentTo); pStats && pStats->m_Mean >= 0)
+				{
+					const float Top = std::clamp(ToY(pStats->m_Mean + pStats->m_StdDev), Area.y, Area.y + Area.h);
+					const float Bottom = std::clamp(ToY(pStats->m_Mean - pStats->m_StdDev), Area.y, Area.y + Area.h);
+					CUIRect{Area.x, Top, Area.w, std::max(1.0f, Bottom - Top)}.Draw(CHART_BLUE.WithAlpha(0.12f), IGraphics::CORNER_NONE, 0.0f);
+				}
 				Graphics()->TextureClear();
 				Graphics()->QuadsBegin();
 				// best so far (steps down) and moving average
@@ -1445,6 +1619,8 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 					const auto &Point = vHistory[i];
 					const vec2 P(ToX(i), ToY(Point.m_Millis));
 					ColorRGBA Color = Point.m_NewBest ? CHART_GREEN : (Point.m_Practice ? CHART_ORANGE.WithAlpha(0.7f) : ColorRGBA(1.0f, 1.0f, 1.0f, 0.55f));
+					if(!Point.m_Focused && !Point.m_NewBest)
+						Color = Color.WithMultipliedAlpha(0.35f);
 					DrawDot(P, Point.m_NewBest ? 5.0f : 4.0f, Color);
 					if(distance(Mouse, P) < 6.0f && Ui()->MouseHovered(&Box))
 					{
@@ -1468,6 +1644,240 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 				Legend(DtLocalize("● attempt"), ColorRGBA(1.0f, 1.0f, 1.0f, 0.7f));
 				Legend(DtLocalize("● practice"), CHART_ORANGE);
 				Legend(DtLocalize("— average of the last 10"), CHART_BLUE);
+				Legend(DtLocalize("■ focused: average ± variation"), CHART_BLUE.WithAlpha(0.6f));
+			}
+		}
+	}
+
+	// --- consistency: variation of the last 10 passes of the same segment ---
+	{
+		const auto vHistory = DdnettySplits::CSplitsData::SegmentHistory(Analysis, m_SplitsAnalysisSegmentFrom, m_SplitsAnalysisSegmentTo);
+		CUIRect Box, Plot, Area;
+		Content.HSplitTop(130.0f, &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			ChartBox(Box, DtLocalize("Consistency (variation of the last 10 passes)"), &Plot);
+			if(vHistory.size() < 3)
+			{
+				Ui()->DoLabel(&Plot, DtLocalize("Needs a few passes of the segment above."), FontSize, TEXTALIGN_MC);
+			}
+			else
+			{
+				int MaxMs = 1;
+				for(const auto &Point : vHistory)
+					MaxMs = std::max(MaxMs, Point.m_MovingStdDev);
+				MaxMs += MaxMs / 10 + 10;
+				TimeAxis(Plot, 0, MaxMs, &Area);
+				auto &&ToY = [&](int Ms) { return Area.y + Area.h * (1.0f - Ms / (float)MaxMs); };
+				auto &&ToX = [&](size_t i) { return Area.x + Area.w * i / (float)(vHistory.size() - 1); };
+				Graphics()->TextureClear();
+				Graphics()->QuadsBegin();
+				for(size_t i = 1; i < vHistory.size(); i++)
+					DrawLine(vec2(ToX(i - 1), ToY(vHistory[i - 1].m_MovingStdDev)), vec2(ToX(i), ToY(vHistory[i].m_MovingStdDev)), 2.0f, CHART_ORANGE);
+				Graphics()->QuadsEnd();
+				for(size_t i = 0; i < vHistory.size(); i++)
+				{
+					const vec2 P(ToX(i), ToY(vHistory[i].m_MovingStdDev));
+					if(std::abs(Mouse.x - P.x) < Area.w / (2.0f * vHistory.size()) + 0.5f && Ui()->MouseHovered(&Box))
+					{
+						char aStd[32], aBuf[96];
+						CSplits::FormatMillis(vHistory[i].m_MovingStdDev, aStd, sizeof(aStd));
+						str_format(aBuf, sizeof(aBuf), DtLocalize("#%d · ±%s"), (int)i + 1, aStd);
+						HoverText = aBuf;
+						HoverPos = P;
+					}
+				}
+				SmallText(Area.x, Area.y + Area.h + 1.0f, DtLocalize("lower = more consistent"), CHART_GREY);
+			}
+		}
+	}
+
+	// the same stats with only the map's time checkpoints, to compare with the reference file
+	const DdnettySplits::CSplitsRefs &Refs = Splits.Refs();
+	static DdnettySplits::SAnalysis s_TimecpAnalysis;
+	static size_t s_TimecpAttempts = SIZE_MAX;
+	static DdnettySplits::SOptions s_TimecpOptions;
+	DdnettySplits::SOptions TimecpOptions = Options;
+	TimecpOptions.m_UseGates = false;
+	TimecpOptions.m_UseTimecps = true;
+	if(!Refs.Empty())
+	{
+		const bool Same = s_TimecpOptions.m_CountPractice == TimecpOptions.m_CountPractice && s_TimecpOptions.m_Since == TimecpOptions.m_Since &&
+				  s_TimecpOptions.m_FocusMarginMillis == TimecpOptions.m_FocusMarginMillis && s_TimecpOptions.m_RunEntriesOnly == TimecpOptions.m_RunEntriesOnly &&
+				  s_TimecpOptions.m_CountDummy == TimecpOptions.m_CountDummy;
+		if(s_TimecpAttempts != Data.m_vAttempts.size() || !Same)
+		{
+			s_TimecpAnalysis = Data.Analyze(TimecpOptions);
+			s_TimecpAttempts = Data.m_vAttempts.size();
+			s_TimecpOptions = TimecpOptions;
+		}
+	}
+
+	// --- you vs the best of everyone else, per segment ---
+	if(!Refs.m_vSegments.empty())
+	{
+		const float BarH = 14.0f;
+		const int NumBars = std::min((int)Refs.m_vSegments.size(), 30);
+		CUIRect Box, Plot;
+		Content.HSplitTop(40.0f + NumBars * (BarH + 2.0f), &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			ChartBox(Box, DtLocalize("You vs the best of everyone else (map time checkpoints)"), &Plot);
+			int MaxDiff = 100;
+			for(const auto &Other : Refs.m_vSegments)
+				if(const auto *pMine = s_TimecpAnalysis.Find(Other.m_From, Other.m_To); pMine && pMine->m_Best >= 0)
+					MaxDiff = std::max(MaxDiff, std::abs(pMine->m_Best - Other.m_Millis));
+			for(int i = 0; i < NumBars; i++)
+			{
+				const auto &Other = Refs.m_vSegments[i];
+				CUIRect Line, Name, Bar, Value;
+				Plot.HSplitTop(BarH, &Line, &Plot);
+				Plot.HSplitTop(2.0f, nullptr, &Plot);
+				Line.VSplitLeft(110.0f, &Name, &Bar);
+				Bar.VSplitRight(150.0f, &Bar, &Value);
+				Name.VSplitLeft(4.0f, nullptr, &Name);
+				Ui()->DoLabel(&Name, (Splits.PointName(Other.m_From) + " → " + Splits.PointName(Other.m_To)).c_str(), SmallFont, TEXTALIGN_ML);
+				const float Mid = Bar.x + Bar.w / 2.0f;
+				CUIRect{Mid - 0.5f, Bar.y, 1.0f, Bar.h}.Draw(CHART_GRID, IGraphics::CORNER_NONE, 0.0f);
+				const auto *pMine = s_TimecpAnalysis.Find(Other.m_From, Other.m_To);
+				char aOther[32], aValue[96];
+				CSplits::FormatMillis(Other.m_Millis, aOther, sizeof(aOther));
+				if(pMine && pMine->m_Best >= 0)
+				{
+					const int Diff = pMine->m_Best - Other.m_Millis;
+					const float W = std::max(1.0f, Bar.w / 2.0f * std::abs(Diff) / (float)MaxDiff);
+					CUIRect{Diff <= 0 ? Mid - W : Mid, Bar.y + 1.0f, W, Bar.h - 2.0f}.Draw(Diff <= 0 ? CHART_GREEN : CHART_RED, IGraphics::CORNER_NONE, 0.0f);
+					char aDiff[32];
+					CSplits::FormatDiff(Diff, aDiff, sizeof(aDiff));
+					str_format(aValue, sizeof(aValue), "%s  (%s %s)", aDiff, aOther, Other.m_Name.c_str());
+				}
+				else
+					str_format(aValue, sizeof(aValue), "—  (%s %s)", aOther, Other.m_Name.c_str());
+				SLabelProperties ValueProps;
+				ValueProps.m_MaxWidth = Value.w - 6.0f;
+				ValueProps.m_EllipsisAtEnd = true;
+				Value.VSplitLeft(6.0f, nullptr, &Value);
+				Ui()->DoLabel(&Value, aValue, SmallFont, TEXTALIGN_ML, ValueProps);
+			}
+		}
+	}
+
+	// --- number ghost: how far ahead or behind a top player each of your last runs was ---
+	if(const DdnettySplits::SRefRun *pTop = Splits.RefRun())
+	{
+		const auto vRuns = DdnettySplits::CSplitsData::RouteTimes(s_TimecpAnalysis, 15);
+		const auto &vRoute = s_TimecpAnalysis.m_vRoute;
+		CUIRect Box, Plot, Area;
+		Content.HSplitTop(180.0f, &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			char aTitle[128];
+			str_format(aTitle, sizeof(aTitle), DtLocalize("Number ghost: your last runs vs %s"), pTop->m_Name.c_str());
+			ChartBox(Box, aTitle, &Plot);
+			if(vRuns.empty() || vRoute.size() < 2)
+			{
+				Ui()->DoLabel(&Plot, DtLocalize("Finish the map once to see your runs here."), FontSize, TEXTALIGN_MC);
+			}
+			else
+			{
+				int MaxDiff = 200;
+				for(const auto &Run : vRuns)
+					for(size_t p = 0; p < vRoute.size(); p++)
+						if(const int RefAt = DdnettySplits::CSplitsRefs::TimeAt(*pTop, vRoute[p]); RefAt >= 0 && Run.m_vAtRoute[p] >= 0)
+							MaxDiff = std::max(MaxDiff, std::abs(Run.m_vAtRoute[p] - RefAt));
+				MaxDiff += MaxDiff / 10;
+				CUIRect Axis;
+				Plot.VSplitLeft(55.0f, &Axis, &Area);
+				Area.HSplitBottom(12.0f, &Area, nullptr);
+				auto &&ToY = [&](int Diff) { return Area.y + Area.h * (0.5f - Diff / (2.0f * MaxDiff)); };
+				auto &&ToX = [&](size_t p) { return Area.x + Area.w * p / (float)(vRoute.size() - 1); };
+				Graphics()->TextureClear();
+				Graphics()->QuadsBegin();
+				DrawLine(vec2(Area.x, ToY(0)), vec2(Area.x + Area.w, ToY(0)), 1.0f, CHART_GOLD.WithAlpha(0.6f));
+				for(size_t r = 0; r < vRuns.size(); r++)
+				{
+					const bool Latest = r + 1 == vRuns.size();
+					const float Alpha = Latest ? 1.0f : 0.15f + 0.45f * r / (float)vRuns.size();
+					vec2 Prev(-1.0f, -1.0f);
+					for(size_t p = 0; p < vRoute.size(); p++)
+					{
+						const int RefAt = DdnettySplits::CSplitsRefs::TimeAt(*pTop, vRoute[p]);
+						if(RefAt < 0 || vRuns[r].m_vAtRoute[p] < 0)
+							continue;
+						const int Diff = vRuns[r].m_vAtRoute[p] - RefAt;
+						const vec2 P(ToX(p), ToY(Diff));
+						if(Prev.x >= 0.0f)
+							DrawLine(Prev, P, Latest ? 2.0f : 1.2f, (Latest ? CHART_BLUE : ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f)).WithAlpha(Alpha));
+						Prev = P;
+						if(distance(Mouse, P) < 5.0f && Ui()->MouseHovered(&Box))
+						{
+							char aDiff[32], aDate[32], aBuf[128];
+							CSplits::FormatDiff(Diff, aDiff, sizeof(aDiff));
+							str_timestamp_ex((time_t)vRuns[r].m_Timestamp, aDate, sizeof(aDate), "%d/%m %H:%M");
+							str_format(aBuf, sizeof(aBuf), "%s %s · %s", Splits.PointName(vRoute[p]).c_str(), aDiff, aDate);
+							HoverText = aBuf;
+							HoverPos = P;
+						}
+					}
+				}
+				Graphics()->QuadsEnd();
+				char aMax[32];
+				CSplits::FormatDiff(MaxDiff, aMax, sizeof(aMax));
+				SmallText(Axis.x + Axis.w - 4.0f, Area.y - SmallFont / 2.0f, aMax, CHART_RED, true);
+				SmallText(Axis.x + Axis.w - 4.0f, ToY(0) - SmallFont / 2.0f, "0", CHART_GOLD, true);
+				CSplits::FormatDiff(-MaxDiff, aMax, sizeof(aMax));
+				SmallText(Axis.x + Axis.w - 4.0f, Area.y + Area.h - SmallFont / 2.0f, aMax, CHART_GREEN, true);
+				for(size_t p = 0; p < vRoute.size(); p++)
+					if(DdnettySplits::CSplitsRefs::TimeAt(*pTop, vRoute[p]) >= 0 && (vRoute.size() <= 14 || p % 2 == 0))
+						SmallText(ToX(p) - 6.0f, Area.y + Area.h + 1.0f, Splits.PointName(vRoute[p]).c_str(), CHART_GREY);
+			}
+		}
+	}
+
+	// --- reach: how many runs from the start got to each point ---
+	{
+		const auto vReach = DdnettySplits::CSplitsData::Reach(Analysis);
+		CUIRect Box, Plot;
+		Content.HSplitTop(150.0f, &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			ChartBox(Box, DtLocalize("Reach: runs from the start that got to each point"), &Plot);
+			if(vReach.size() < 2 || vReach[0] == 0)
+			{
+				Ui()->DoLabel(&Plot, DtLocalize("Start a few runs from the start line to see this."), FontSize, TEXTALIGN_MC);
+			}
+			else
+			{
+				CUIRect Axis;
+				Plot.HSplitBottom(12.0f, &Plot, &Axis);
+				const float ColW = Plot.w / vReach.size();
+				for(size_t i = 0; i < vReach.size(); i++)
+				{
+					CUIRect Col = {Plot.x + ColW * i + 1.0f, Plot.y, std::max(1.0f, ColW - 2.0f), Plot.h};
+					const float H = Plot.h * vReach[i] / (float)vReach[0];
+					const float Drop = i > 0 && vReach[i - 1] > 0 ? 1.0f - vReach[i] / (float)vReach[i - 1] : 0.0f;
+					CUIRect{Col.x, Col.y + Col.h - H, Col.w, H}.Draw(MixColor(CHART_GREEN, CHART_RED, std::min(1.0f, Drop * 3.0f)).WithAlpha(0.85f), IGraphics::CORNER_NONE, 0.0f);
+					if(Ui()->MouseHovered(&Col))
+					{
+						Col.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.06f), IGraphics::CORNER_NONE, 0.0f);
+						char aBuf[160];
+						if(i > 0)
+							str_format(aBuf, sizeof(aBuf), DtLocalize("%s · %d runs (%d%%) · %d ended in the segment before"), Splits.PointName(Analysis.m_vRoute[i]).c_str(), vReach[i], (int)std::lround(100.0 * vReach[i] / vReach[0]), vReach[i - 1] - vReach[i]);
+						else
+							str_format(aBuf, sizeof(aBuf), DtLocalize("%s · %d runs"), Splits.PointName(Analysis.m_vRoute[i]).c_str(), vReach[i]);
+						HoverText = aBuf;
+						HoverPos = Mouse;
+					}
+				}
+				SmallText(Axis.x, Axis.y + 1.0f, Splits.PointName(Analysis.m_vRoute.front()).c_str(), CHART_GREY);
+				SmallText(Axis.x + Axis.w, Axis.y + 1.0f, Splits.PointName(Analysis.m_vRoute.back()).c_str(), CHART_GREY, true);
+				char aMax[32];
+				str_format(aMax, sizeof(aMax), "%d", vReach[0]);
+				SmallText(Plot.x + Plot.w, Plot.y - SmallFont - 2.0f, aMax, CHART_GREY, true);
 			}
 		}
 	}
@@ -1513,6 +1923,59 @@ void CMenus::RenderSplitsAnalysis(CUIRect View)
 			char aMax[32];
 			str_format(aMax, sizeof(aMax), "%d", MaxCount);
 			SmallText(Plot.x + Plot.w, Plot.y - SmallFont - 2.0f, aMax, CHART_GREY, true);
+		}
+	}
+
+	// --- hours: weekday x hour of the day ---
+	{
+		CUIRect Box, Plot;
+		Content.HSplitTop(170.0f, &Box, &Content);
+		Content.HSplitTop(Gap, nullptr, &Content);
+		if(s_ScrollRegion.AddRect(Box))
+		{
+			ChartBox(Box, m_SplitsHeatmapRecords ? DtLocalize("When you beat your segments (weekday × hour)") : DtLocalize("When you play (weekday × hour)"), &Plot);
+			CUIRect Toggle = {Box.x + Box.w - 170.0f, Box.y + 5.0f, 165.0f, 16.0f};
+			static int s_HeatToggle;
+			if(DoButton_CheckBox(&s_HeatToggle, DtLocalize("New bests"), m_SplitsHeatmapRecords, &Toggle))
+				m_SplitsHeatmapRecords = !m_SplitsHeatmapRecords;
+			const auto Heat = DdnettySplits::CSplitsData::Heatmap(Analysis, LocalUtcOffset());
+			const auto &aaValues = m_SplitsHeatmapRecords ? Heat.m_aaRecords : Heat.m_aaAttempts;
+			int MaxValue = 1;
+			for(const auto &aDay : aaValues)
+				for(int Value : aDay)
+					MaxValue = std::max(MaxValue, Value);
+			CUIRect Labels, Hours;
+			Plot.VSplitLeft(30.0f, &Labels, &Plot);
+			Plot.HSplitBottom(12.0f, &Plot, &Hours);
+			const char *apDays[7] = {DtLocalize("Sun"), DtLocalize("Mon"), DtLocalize("Tue"), DtLocalize("Wed"), DtLocalize("Thu"), DtLocalize("Fri"), DtLocalize("Sat")};
+			const float CellW = Plot.w / 24.0f;
+			const float CellH = Plot.h / 7.0f;
+			for(int Day = 0; Day < 7; Day++)
+			{
+				// monday first
+				const int Row = (Day + 6) % 7;
+				SmallText(Labels.x, Plot.y + CellH * Row + CellH / 2.0f - SmallFont / 2.0f, apDays[Day], CHART_GREY);
+				for(int Hour = 0; Hour < 24; Hour++)
+				{
+					const int Value = aaValues[Day][Hour];
+					CUIRect Cell = {Plot.x + CellW * Hour + 0.5f, Plot.y + CellH * Row + 0.5f, CellW - 1.0f, CellH - 1.0f};
+					const float T = Value / (float)MaxValue;
+					Cell.Draw(Value > 0 ? MixColor(CHART_BLUE.WithAlpha(0.25f), m_SplitsHeatmapRecords ? CHART_GREEN : CHART_ORANGE, T) : ColorRGBA(1.0f, 1.0f, 1.0f, 0.03f), IGraphics::CORNER_NONE, 0.0f);
+					if(Ui()->MouseHovered(&Cell))
+					{
+						char aBuf[128];
+						str_format(aBuf, sizeof(aBuf), DtLocalize("%s %02d:00 · %d attempts · %d new bests"), apDays[Day], Hour, Heat.m_aaAttempts[Day][Hour], Heat.m_aaRecords[Day][Hour]);
+						HoverText = aBuf;
+						HoverPos = Mouse;
+					}
+				}
+			}
+			for(int Hour = 0; Hour < 24; Hour += 3)
+			{
+				char aHour[8];
+				str_format(aHour, sizeof(aHour), "%02d", Hour);
+				SmallText(Plot.x + CellW * Hour, Hours.y + 1.0f, aHour, CHART_GREY);
+			}
 		}
 	}
 

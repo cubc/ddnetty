@@ -531,3 +531,52 @@ TEST(DdnettySplits, Refs)
 	EXPECT_EQ(Refs.FindSegment(6, 7)->m_Name, "Poop");
 	EXPECT_EQ(Refs.FindSegment(7, 8), nullptr);
 }
+
+TEST(DdnettySplits, NewChartData)
+{
+	CSplitsData Data;
+	// run 1: 10 + 10, run 2: 9 + 12, run 3 dies after the first segment (8), run 4: 11 + 9
+	Data.m_vAttempts.push_back(Att(1, 100, POINT_START, 0, 10000));
+	Data.m_vAttempts.push_back(Att(1, 100, 0, POINT_FINISH, 10000));
+	Data.m_vAttempts.push_back(Att(2, 200, POINT_START, 0, 9000));
+	Data.m_vAttempts.push_back(Att(2, 200, 0, POINT_FINISH, 12000));
+	Data.m_vAttempts.push_back(Att(3, 300, POINT_START, 0, 8000));
+	Data.m_vAttempts.push_back(Att(4, 400, POINT_START, 0, 11000));
+	Data.m_vAttempts.push_back(Att(4, 400, 0, POINT_FINISH, 9000));
+	SOptions Options;
+	Options.m_FocusMarginMillis = 0;
+	const SAnalysis Analysis = Data.Analyze(Options);
+
+	const auto vIdeal = CSplitsData::IdealHistory(Analysis);
+	ASSERT_EQ(vIdeal.size(), 4u);
+	EXPECT_EQ(vIdeal[0].m_Millis, 20000);
+	EXPECT_EQ(vIdeal[1].m_Millis, 19000);
+	EXPECT_EQ(vIdeal[2].m_Millis, 18000);
+	EXPECT_EQ(vIdeal[3].m_Millis, 17000);
+
+	const auto vReach = CSplitsData::Reach(Analysis);
+	ASSERT_EQ(vReach.size(), 3u);
+	EXPECT_EQ(vReach[0], 4);
+	EXPECT_EQ(vReach[1], 4);
+	EXPECT_EQ(vReach[2], 3);
+
+	const auto vTimes = CSplitsData::RouteTimes(Analysis, 2);
+	ASSERT_EQ(vTimes.size(), 2u);
+	EXPECT_EQ(vTimes[0].m_vAtRoute[1], 9000);
+	EXPECT_EQ(vTimes[1].m_vAtRoute[1], 11000);
+	EXPECT_EQ(vTimes[1].m_vAtRoute[2], 20000);
+
+	const auto vGaps = CSplitsData::FocusGaps(Analysis);
+	ASSERT_EQ(vGaps.size(), 2u);
+	EXPECT_EQ(vGaps[0].m_Best, 8000);
+	EXPECT_EQ(vGaps[0].m_MeanAll, 9500);
+
+	// 1970-01-01 00:00 UTC was a Thursday
+	const auto Heat = CSplitsData::Heatmap(Analysis, 0);
+	EXPECT_EQ(Heat.m_aaAttempts[4][0], 7);
+	EXPECT_EQ(Heat.m_aaRecords[4][0], 3); // 9.0, 8.0 and 9.0 beat the earlier bests
+
+	const auto vHistory = CSplitsData::SegmentHistory(Analysis, POINT_START, 0);
+	ASSERT_EQ(vHistory.size(), 4u);
+	EXPECT_EQ(vHistory[1].m_MovingStdDev, 500);
+}

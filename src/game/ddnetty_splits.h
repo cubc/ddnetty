@@ -210,6 +210,8 @@ namespace DdnettySplits
 			bool m_Practice = false;
 			bool m_NewBest = false; // fastest so far
 			int m_MovingAverage = 0; // mean of the last AVERAGE_WINDOW attempts up to this one
+			int m_MovingStdDev = 0; // their standard deviation (consistency)
+			bool m_Focused = true;
 		};
 		static std::vector<SHistoryPoint> SegmentHistory(const SAnalysis &Analysis, int From, int To);
 
@@ -231,6 +233,47 @@ namespace DdnettySplits
 			int m_WorstStdDev = -1;
 		};
 		SSummary Summarize(const SAnalysis &Analysis, bool IncludePractice) const;
+
+		// the ideal run (sum of the bests along the route) each time it went down
+		struct SIdealPoint
+		{
+			int m_Attempt = 0; // index in Analysis.m_vAttempts
+			int64_t m_Timestamp = 0;
+			int m_Millis = 0;
+		};
+		static std::vector<SIdealPoint> IdealHistory(const SAnalysis &Analysis);
+
+		// average minus best of each route segment, with every attempt and with the focused ones
+		struct SFocusGap
+		{
+			int m_From = POINT_NONE;
+			int m_To = POINT_NONE;
+			int m_Best = -1;
+			int m_MeanAll = -1;
+			int m_MeanFocused = -1;
+		};
+		static std::vector<SFocusGap> FocusGaps(const SAnalysis &Analysis);
+
+		// how many runs from the start reached each point of the route (index 0 = the start)
+		static std::vector<int> Reach(const SAnalysis &Analysis);
+
+		// run time at each point of the route for the last finished runs, oldest first
+		// (-1 where the run took another way); for the "number ghost"
+		struct SRunTimes
+		{
+			int64_t m_Timestamp = 0;
+			int m_Millis = 0;
+			std::vector<int> m_vAtRoute;
+		};
+		static std::vector<SRunTimes> RouteTimes(const SAnalysis &Analysis, int MaxRuns);
+
+		// attempts and new best segments per weekday (0 = Sunday) and local hour
+		struct SHeatmap
+		{
+			int m_aaAttempts[7][24] = {};
+			int m_aaRecords[7][24] = {};
+		};
+		static SHeatmap Heatmap(const SAnalysis &Analysis, int64_t UtcOffsetSeconds);
 
 	private:
 		std::set<int> AllGatePoints() const;

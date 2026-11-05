@@ -1033,6 +1033,7 @@ private:
 	int m_SplitsAnalysisSegmentFrom = -1; // segment shown in the history chart
 	int m_SplitsAnalysisSegmentTo = -1;
 	bool m_SplitsAnalysisPractice = true; // practice runs in the evolution chart
+	bool m_SplitsHeatmapRecords = false; // heatmap colored by new best segments instead of attempts
 	void PopupConfirmSplitsDelete();
 
 	// TClient: found in menus_tclient.cpp

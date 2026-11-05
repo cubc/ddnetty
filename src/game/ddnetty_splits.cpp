@@ -764,13 +764,173 @@ namespace DdnettySplits
 			Best = std::min(Best, Attempt.m_Millis);
 			vResult.push_back(Point);
 
+			vResult.back().m_Focused = Effective.m_Focused;
 			const size_t Start = vResult.size() > (size_t)AVERAGE_WINDOW ? vResult.size() - AVERAGE_WINDOW : 0;
-			long long Sum = 0;
+			const double Num = (double)(vResult.size() - Start);
+			double Sum = 0.0;
 			for(size_t i = Start; i < vResult.size(); i++)
 				Sum += vResult[i].m_Millis;
-			vResult.back().m_MovingAverage = (int)(Sum / (long long)(vResult.size() - Start));
+			const double Mean = Sum / Num;
+			double Variance = 0.0;
+			for(size_t i = Start; i < vResult.size(); i++)
+				Variance += (vResult[i].m_Millis - Mean) * (vResult[i].m_Millis - Mean);
+			vResult.back().m_MovingAverage = (int)(Sum / Num);
+			vResult.back().m_MovingStdDev = (int)std::lround(std::sqrt(Variance / Num));
 		}
 		return vResult;
+	}
+
+	std::vector<CSplitsData::SIdealPoint> CSplitsData::IdealHistory(const SAnalysis &Analysis)
+	{
+		std::vector<SIdealPoint> vResult;
+		if(!Analysis.m_RouteComplete)
+			return vResult;
+		std::map<std::pair<int, int>, size_t> RouteSegments;
+		for(size_t i = 0; i + 1 < Analysis.m_vRoute.size(); i++)
+			RouteSegments.emplace(std::make_pair(Analysis.m_vRoute[i], Analysis.m_vRoute[i + 1]), i);
+		std::vector<int> vBest(RouteSegments.size(), -1);
+		size_t Missing = vBest.size();
+		long long Sum = 0;
+		for(size_t i = 0; i < Analysis.m_vAttempts.size(); i++)
+		{
+			const SAttempt &Attempt = Analysis.m_vAttempts[i].m_Attempt;
+			auto It = RouteSegments.find(std::make_pair(Attempt.m_From, Attempt.m_To));
+			if(It == RouteSegments.end())
+				continue;
+			int &Best = vBest[It->second];
+			if(Best >= 0 && Attempt.m_Millis >= Best)
+				continue;
+			if(Best < 0)
+				Missing--;
+			else
+				Sum -= Best;
+			Best = Attempt.m_Millis;
+			Sum += Best;
+			if(Missing == 0)
+				vResult.push_back({(int)i, Attempt.m_Timestamp, (int)Sum});
+		}
+		return vResult;
+	}
+
+	std::vector<CSplitsData::SFocusGap> CSplitsData::FocusGaps(const SAnalysis &Analysis)
+	{
+		std::vector<SFocusGap> vResult;
+		for(const SSegmentStats &Stats : Analysis.m_vRouteStats)
+		{
+			if(Stats.m_Count == 0)
+				continue;
+			SFocusGap Gap;
+			Gap.m_From = Stats.m_From;
+			Gap.m_To = Stats.m_To;
+			Gap.m_Best = Stats.m_Best;
+			Gap.m_MeanFocused = Stats.m_Mean;
+			std::vector<int> vAll;
+			for(const SEffectiveAttempt &Effective : Analysis.m_vAttempts)
+				if(Effective.m_Attempt.m_From == Stats.m_From && Effective.m_Attempt.m_To == Stats.m_To)
+					vAll.push_back(Effective.m_Attempt.m_Millis);
+			const size_t Start = vAll.size() > (size_t)AVERAGE_WINDOW ? vAll.size() - AVERAGE_WINDOW : 0;
+			long long Sum = 0;
+			for(size_t i = Start; i < vAll.size(); i++)
+				Sum += vAll[i];
+			Gap.m_MeanAll = (int)std::lround((double)Sum / (double)(vAll.size() - Start));
+			vResult.push_back(Gap);
+		}
+		return vResult;
+	}
+
+	namespace
+	{
+		// calls Fn(Begin, End) for every chain of attempts that starts at the start line
+		template<typename F>
+		void ForEachRunFromStart(const SAnalysis &Analysis, F &&Fn)
+		{
+			const auto &vAttempts = Analysis.m_vAttempts;
+			size_t RunStart = 0;
+			while(RunStart < vAttempts.size())
+			{
+				size_t RunEnd = RunStart + 1;
+				while(RunEnd < vAttempts.size() && vAttempts[RunEnd].m_Attempt.m_RunId == vAttempts[RunStart].m_Attempt.m_RunId && vAttempts[RunEnd].m_Attempt.m_From == vAttempts[RunEnd - 1].m_Attempt.m_To)
+					RunEnd++;
+				if(vAttempts[RunStart].m_Attempt.m_From == POINT_START)
+					Fn(RunStart, RunEnd);
+				RunStart = RunEnd;
+			}
+		}
+	} // namespace
+
+	std::vector<int> CSplitsData::Reach(const SAnalysis &Analysis)
+	{
+		std::vector<int> vResult(Analysis.m_vRoute.size(), 0);
+		if(vResult.empty())
+			return vResult;
+		ForEachRunFromStart(Analysis, [&](size_t Begin, size_t End) {
+			// follow the route as far as the run went
+			size_t Index = 0;
+			vResult[0]++;
+			for(size_t i = Begin; i < End && Index + 1 < Analysis.m_vRoute.size(); i++)
+			{
+				const SAttempt &Attempt = Analysis.m_vAttempts[i].m_Attempt;
+				if(Attempt.m_From != Analysis.m_vRoute[Index] || Attempt.m_To != Analysis.m_vRoute[Index + 1])
+					break;
+				Index++;
+				vResult[Index]++;
+			}
+		});
+		return vResult;
+	}
+
+	std::vector<CSplitsData::SRunTimes> CSplitsData::RouteTimes(const SAnalysis &Analysis, int MaxRuns)
+	{
+		std::vector<SRunTimes> vResult;
+		ForEachRunFromStart(Analysis, [&](size_t Begin, size_t End) {
+			if(Analysis.m_vAttempts[End - 1].m_Attempt.m_To != POINT_FINISH)
+				return;
+			SRunTimes Run;
+			Run.m_Timestamp = Analysis.m_vAttempts[Begin].m_Attempt.m_Timestamp;
+			Run.m_vAtRoute.assign(Analysis.m_vRoute.size(), -1);
+			if(!Run.m_vAtRoute.empty())
+				Run.m_vAtRoute[0] = 0;
+			int Time = 0;
+			int Index = 0;
+			for(size_t i = Begin; i < End; i++)
+			{
+				const SAttempt &Attempt = Analysis.m_vAttempts[i].m_Attempt;
+				Time += Attempt.m_Millis;
+				const int Next = Analysis.RouteIndex(Attempt.m_To, Index + 1);
+				if(Next >= 0)
+				{
+					Run.m_vAtRoute[Next] = Time;
+					Index = Next;
+				}
+			}
+			Run.m_Millis = Time;
+			vResult.push_back(Run);
+		});
+		if(MaxRuns >= 0 && (int)vResult.size() > MaxRuns)
+			vResult.erase(vResult.begin(), vResult.end() - MaxRuns);
+		return vResult;
+	}
+
+	CSplitsData::SHeatmap CSplitsData::Heatmap(const SAnalysis &Analysis, int64_t UtcOffsetSeconds)
+	{
+		SHeatmap Heat;
+		std::map<std::pair<int, int>, int> Best;
+		for(const SEffectiveAttempt &Effective : Analysis.m_vAttempts)
+		{
+			const SAttempt &Attempt = Effective.m_Attempt;
+			const int64_t Local = Attempt.m_Timestamp + UtcOffsetSeconds;
+			const int64_t Day = Local >= 0 ? Local / 86400 : (Local - 86399) / 86400;
+			const int Weekday = (int)(((Day + 4) % 7 + 7) % 7); // 1970-01-01 was a Thursday
+			const int Hour = (int)((Local - Day * 86400) / 3600);
+			Heat.m_aaAttempts[Weekday][Hour]++;
+			auto [It, New] = Best.emplace(std::make_pair(Attempt.m_From, Attempt.m_To), Attempt.m_Millis);
+			if(!New && Attempt.m_Millis < It->second)
+			{
+				It->second = Attempt.m_Millis;
+				Heat.m_aaRecords[Weekday][Hour]++;
+			}
+		}
+		return Heat;
 	}
 
 	std::vector<CSplitsData::SDayActivity> CSplitsData::Activity(int64_t Now, int64_t UtcOffsetSeconds, int NumDays) const
