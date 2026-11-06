@@ -836,4 +836,111 @@ namespace DdnettySplits
 		}
 	}
 
+	void CSplitsRefs::Clear()
+	{
+		m_vRuns.clear();
+		m_vSegments.clear();
+	}
+
+	bool CSplitsRefs::ParseLine(const char *pLine)
+	{
+		const char *pStr = pLine;
+		std::string Kind;
+		if(!NextToken(pStr, Kind) || Kind[0] == '#')
+			return true;
+
+		auto &&RestOfLine = [&]() {
+			while(*pStr == ' ' || *pStr == '\t')
+				pStr++;
+			std::string Rest = pStr;
+			while(!Rest.empty() && (Rest.back() == '\r' || Rest.back() == '\n' || Rest.back() == ' '))
+				Rest.pop_back();
+			return Rest;
+		};
+
+		std::string Token;
+		long long Value;
+		if(Kind == "ref")
+		{
+			SRefRun Run;
+			if(!NextToken(pStr, Token) || !ParseInt(Token, Value) || Value <= 0 || Value > 24LL * 60 * 60 * 1000)
+				return false;
+			Run.m_Millis = (int)Value;
+			if(!NextToken(pStr, Run.m_Date))
+				return false;
+			long long NumCps;
+			if(!NextToken(pStr, Token) || !ParseInt(Token, NumCps) || NumCps < 0 || NumCps > NUM_TIMECPS)
+				return false;
+			for(long long i = 0; i < NumCps; i++)
+			{
+				if(!NextToken(pStr, Token) || !ParseInt(Token, Value) || Value < -1 || Value > Run.m_Millis)
+					return false;
+				Run.m_vCps.push_back((int)Value);
+			}
+			Run.m_Name = RestOfLine();
+			if(Run.m_Name.empty())
+				return false;
+			auto It = std::upper_bound(m_vRuns.begin(), m_vRuns.end(), Run, [](const SRefRun &A, const SRefRun &B) { return A.m_Millis < B.m_Millis; });
+			m_vRuns.insert(It, Run);
+			return true;
+		}
+		if(Kind == "segbest")
+		{
+			SRefSegment Segment;
+			std::string From, To;
+			if(!NextToken(pStr, From) || !NextToken(pStr, To) || !NextToken(pStr, Token) || !ParseInt(Token, Value) || Value < 0 || Value > 24LL * 60 * 60 * 1000)
+				return false;
+			Segment.m_From = PointFromString(From.c_str());
+			Segment.m_To = PointFromString(To.c_str());
+			if(Segment.m_From == POINT_NONE || Segment.m_To == POINT_NONE || Segment.m_From == Segment.m_To)
+				return false;
+			Segment.m_Millis = (int)Value;
+			if(!NextToken(pStr, Segment.m_Date))
+				return false;
+			Segment.m_Name = RestOfLine();
+			for(SRefSegment &Existing : m_vSegments)
+			{
+				if(Existing.m_From == Segment.m_From && Existing.m_To == Segment.m_To)
+				{
+					if(Segment.m_Millis < Existing.m_Millis)
+						Existing = Segment;
+					return true;
+				}
+			}
+			m_vSegments.push_back(Segment);
+			return true;
+		}
+		return false;
+	}
+
+	const SRefRun *CSplitsRefs::FindRun(const char *pName) const
+	{
+		if(m_vRuns.empty())
+			return nullptr;
+		if(pName && pName[0])
+			for(const SRefRun &Run : m_vRuns)
+				if(Run.m_Name == pName)
+					return &Run;
+		return &m_vRuns.front();
+	}
+
+	const SRefSegment *CSplitsRefs::FindSegment(int From, int To) const
+	{
+		for(const SRefSegment &Segment : m_vSegments)
+			if(Segment.m_From == From && Segment.m_To == To)
+				return &Segment;
+		return nullptr;
+	}
+
+	int CSplitsRefs::TimeAt(const SRefRun &Run, int Point)
+	{
+		if(Point == POINT_START)
+			return 0;
+		if(Point == POINT_FINISH)
+			return Run.m_Millis;
+		if(IsTimecp(Point) && Point < (int)Run.m_vCps.size())
+			return Run.m_vCps[Point];
+		return -1;
+	}
+
 } // namespace DdnettySplits

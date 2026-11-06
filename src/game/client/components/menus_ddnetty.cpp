@@ -466,7 +466,7 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 		g_Config.m_DtSplitsCountDummy ^= 1;
 	Row.VSplitLeft(180.0f, &Button, &Row);
 	if(DoButton_CheckBox(&s_PbNoticeCheckbox, DtLocalize("New best message"), g_Config.m_DtSplitsPbNotice, &Button))
-		g_Config.m_DtSplitsPbNotice ^= 1;
+		g_Config.m_DtSplitsPbNotice = g_Config.m_DtSplitsPbNotice ? 0 : 2;
 	if(g_Config.m_DtSplitsPbNotice)
 	{
 		Row.VSplitLeft(100.0f, &Button, &Row);
@@ -479,9 +479,62 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 	MainView.HSplitTop(LineSize, &Row, &MainView);
 	Row.VSplitLeft(115.0f, &Label, &Row);
 	Ui()->DoLabel(&Label, DtLocalize("Target time:"), FontSize, TEXTALIGN_ML);
-	static CButtonContainer s_aTargetButtons[3];
-	const char *apTargets[] = {DtLocalize("Server record"), DtLocalize("My best"), DtLocalize("Custom")};
-	g_Config.m_DtSplitsTargetMode = DoChoices(&Row, s_aTargetButtons, apTargets, 3, g_Config.m_DtSplitsTargetMode, 120.0f);
+	static CButtonContainer s_aTargetButtons[4];
+	const char *apTargets[] = {DtLocalize("Server record"), DtLocalize("My best"), DtLocalize("Custom"), DtLocalize("Top player")};
+	g_Config.m_DtSplitsTargetMode = DoChoices(&Row, s_aTargetButtons, apTargets, 4, g_Config.m_DtSplitsTargetMode, 110.0f);
+	if(g_Config.m_DtSplitsTargetMode == 3)
+	{
+		// pick one of the top players of the reference file
+		const auto &vRuns = Splits.Refs().m_vRuns;
+		const DdnettySplits::SRefRun *pRun = Splits.RefRun();
+		Row.VSplitLeft(5.0f, nullptr, &Row);
+		static CButtonContainer s_PrevRefButton, s_NextRefButton, s_ReloadRefsButton, s_RefsFolderButton;
+		if(vRuns.empty())
+		{
+			Row.VSplitLeft(110.0f, &Button, &Row);
+			if(DoButton_Menu(&s_RefsFolderButton, DtLocalize("Open folder"), 0, &Button))
+			{
+				Storage()->CreateFolder("ddnetty/splits/refs", IStorage::TYPE_SAVE);
+				char aFolder[IO_MAX_PATH_LENGTH];
+				Storage()->GetCompletePath(IStorage::TYPE_SAVE, "ddnetty/splits/refs", aFolder, sizeof(aFolder));
+				Client()->ViewFile(aFolder);
+			}
+			Row.VSplitLeft(5.0f, nullptr, &Row);
+			Row.VSplitLeft(80.0f, &Button, &Row);
+			if(DoButton_Menu(&s_ReloadRefsButton, DtLocalize("Reload"), 0, &Button))
+				Splits.LoadRefs();
+			Row.VSplitLeft(8.0f, nullptr, &Row);
+			char aHint[IO_MAX_PATH_LENGTH + 64];
+			str_format(aHint, sizeof(aHint), DtLocalize("No reference file: %s"), Splits.RefsPath());
+			SLabelProperties HintProps;
+			HintProps.SetColor(ColorRGBA(1.0f, 1.0f, 1.0f, 0.6f));
+			HintProps.m_MaxWidth = Row.w;
+			HintProps.m_EllipsisAtEnd = true;
+			Ui()->DoLabel(&Row, aHint, 12.0f, TEXTALIGN_ML, HintProps);
+		}
+		else
+		{
+			int Index = 0;
+			for(size_t i = 0; i < vRuns.size(); i++)
+				if(&vRuns[i] == pRun)
+					Index = (int)i;
+			Row.VSplitLeft(20.0f, &Button, &Row);
+			if(DoButton_Menu(&s_PrevRefButton, "<", 0, &Button))
+				str_copy(g_Config.m_DtSplitsRefPlayer, vRuns[(Index + vRuns.size() - 1) % vRuns.size()].m_Name.c_str());
+			char aTime[32], aLabel[96];
+			CSplits::FormatMillis(pRun->m_Millis, aTime, sizeof(aTime));
+			str_format(aLabel, sizeof(aLabel), "%d. %s  %s", Index + 1, pRun->m_Name.c_str(), aTime);
+			Row.VSplitLeft(190.0f, &Button, &Row);
+			Ui()->DoLabel(&Button, aLabel, FontSize, TEXTALIGN_MC);
+			Row.VSplitLeft(20.0f, &Button, &Row);
+			if(DoButton_Menu(&s_NextRefButton, ">", 0, &Button))
+				str_copy(g_Config.m_DtSplitsRefPlayer, vRuns[(Index + 1) % vRuns.size()].m_Name.c_str());
+			Row.VSplitLeft(5.0f, nullptr, &Row);
+			Row.VSplitLeft(80.0f, &Button, &Row);
+			if(DoButton_Menu(&s_ReloadRefsButton, DtLocalize("Reload"), 0, &Button))
+				Splits.LoadRefs();
+		}
+	}
 	if(g_Config.m_DtSplitsTargetMode == 2)
 	{
 		// custom time for this map, saved with its splits
@@ -571,8 +624,9 @@ void CMenus::RenderSplitsSegments(CUIRect View)
 		return;
 	}
 
-	// columns: segment (flexible), best, average, variation, last, attempts, clear button
-	const float aWidths[] = {90.0f, 90.0f, 80.0f, 90.0f, 75.0f, 70.0f};
+	// columns: segment (flexible), best, average, variation, last, attempts, best of everyone else, clear button
+	const bool HasRefs = !Splits.Refs().m_vSegments.empty();
+	const float aWidths[] = {80.0f, 80.0f, 80.0f, 70.0f, 90.0f, HasRefs ? 130.0f : 0.0f, 70.0f};
 	auto &&SplitColumns = [&](CUIRect Row, CUIRect *pCols) {
 		float Fixed = 0.0f;
 		for(float Width : aWidths)
@@ -582,15 +636,20 @@ void CMenus::RenderSplitsSegments(CUIRect View)
 			Row.VSplitLeft(aWidths[i], &pCols[i + 1], &Row);
 	};
 
-	CUIRect Headers, aCols[7];
+	CUIRect Headers, aCols[8];
 	View.HSplitTop(RowHeight, &Headers, &View);
 	Headers.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f), IGraphics::CORNER_T, 5.0f);
 	Headers.VSplitLeft(5.0f, nullptr, &Headers);
 	Headers.VSplitRight(20.0f, &Headers, nullptr); // scrollbar
 	SplitColumns(Headers, aCols);
-	const char *apCaptions[] = {DtLocalize("Segment"), DtLocalize("Best"), DtLocalize("Average"), DtLocalize("Variation"), DtLocalize("Last"), DtLocalize("Attempts")};
-	for(int i = 0; i < 6; i++)
-		Ui()->DoLabel(&aCols[i], apCaptions[i], FontSize, TEXTALIGN_ML);
+	const char *apCaptions[] = {DtLocalize("Segment"), DtLocalize("Best"), DtLocalize("Average"), DtLocalize("Variation"), DtLocalize("Last"), DtLocalize("Attempts"), DtLocalize("Best of all")};
+	for(int i = 0; i < 7; i++)
+		if(i < 6 || HasRefs)
+			Ui()->DoLabel(&aCols[i], apCaptions[i], FontSize, TEXTALIGN_ML);
+	static int s_AttemptsTooltip, s_BestOfAllTooltip;
+	GameClient()->m_Tooltips.DoToolTip(&s_AttemptsTooltip, &aCols[5], DtLocalize("All attempts (focused ones in brackets: the average and the variation use those)"));
+	if(HasRefs)
+		GameClient()->m_Tooltips.DoToolTip(&s_BestOfAllTooltip, &aCols[6], DtLocalize("Fastest time of anyone else in this segment, from the map's reference file. Gold: yours is faster."));
 
 	static CScrollRegion s_ScrollRegion;
 	CScrollRegionParams ScrollParams;
@@ -640,7 +699,10 @@ void CMenus::RenderSplitsSegments(CUIRect View)
 		else
 			str_copy(aStdDev, "—");
 		CSplits::FormatMillis(Stats.m_Last, aLast, sizeof(aLast));
-		str_format(aCount, sizeof(aCount), "%d", Stats.m_Count);
+		if(Stats.m_Focused != Stats.m_Count)
+			str_format(aCount, sizeof(aCount), "%d (%d)", Stats.m_Count, Stats.m_Focused);
+		else
+			str_format(aCount, sizeof(aCount), "%d", Stats.m_Count);
 
 		SLabelProperties NameProps;
 		NameProps.m_MaxWidth = aCols[0].w - 5.0f;
@@ -651,11 +713,23 @@ void CMenus::RenderSplitsSegments(CUIRect View)
 		Ui()->DoLabel(&aCols[3], aStdDev, FontSize, TEXTALIGN_ML);
 		Ui()->DoLabel(&aCols[4], aLast, FontSize, TEXTALIGN_ML);
 		Ui()->DoLabel(&aCols[5], aCount, FontSize, TEXTALIGN_ML);
+		if(const DdnettySplits::SRefSegment *pOther = HasRefs ? Splits.Refs().FindSegment(Stats.m_From, Stats.m_To) : nullptr)
+		{
+			char aOther[32], aCell[96];
+			CSplits::FormatMillis(pOther->m_Millis, aOther, sizeof(aOther));
+			str_format(aCell, sizeof(aCell), "%s %s", aOther, pOther->m_Name.c_str());
+			SLabelProperties OtherProps;
+			OtherProps.m_MaxWidth = aCols[6].w - 5.0f;
+			OtherProps.m_EllipsisAtEnd = true;
+			if(Stats.m_Best >= 0 && Stats.m_Best < pOther->m_Millis)
+				OtherProps.SetColor(ColorRGBA(1.0f, 0.82f, 0.25f, 1.0f));
+			Ui()->DoLabel(&aCols[6], aCell, FontSize, TEXTALIGN_ML, OtherProps);
+		}
 
 		if(Stats.m_Count > 0)
 		{
 			CUIRect ClearButton;
-			aCols[6].Margin(1.0f, &ClearButton);
+			aCols[7].Margin(1.0f, &ClearButton);
 			if(DoButton_Menu(&s_vClearButtons[i], DtLocalize("Clear"), 0, &ClearButton))
 			{
 				m_SplitsPendingDelete = SPLITS_DELETE_SEGMENT;

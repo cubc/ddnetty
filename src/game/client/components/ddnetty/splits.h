@@ -38,6 +38,11 @@ public:
 	DdnettySplits::SOptions Options() const;
 	const DdnettySplits::SAnalysis &Analysis();
 	const DdnettySplits::CSplitsData &Data() const { return m_Data; }
+	// top players of the map (ddnetty/splits/refs/<map>.txt)
+	const DdnettySplits::CSplitsRefs &Refs() const { return m_Refs; }
+	const DdnettySplits::SRefRun *RefRun() const; // the one chosen with dt_splits_ref_player
+	void LoadRefs();
+	const char *RefsPath() const { return m_aRefsPath; }
 	void DeleteRuns(const std::vector<int> &vRunIds);
 	void DeleteSegment(int From, int To);
 	void DeleteGate(int GateId);
@@ -84,6 +89,8 @@ public:
 private:
 	DdnettySplits::CSplitsData m_Data;
 	char m_aPath[IO_MAX_PATH_LENGTH] = "";
+	DdnettySplits::CSplitsRefs m_Refs;
+	char m_aRefsPath[IO_MAX_PATH_LENGTH] = "";
 
 	DdnettySplits::SAnalysis m_Analysis;
 	DdnettySplits::SOptions m_AnalysisOptions;
@@ -118,6 +125,8 @@ private:
 	bool m_HudHasDiff = false;
 	int m_HudPrediction = -1;
 	bool m_HudUnlikely = false;
+	bool m_HudHasRefDiff = false; // compared with a top player at this point
+	int m_HudRefDiff = 0;
 
 	// edit mode
 	enum
@@ -146,7 +155,8 @@ private:
 	// new best segment message, two lines under the HUD
 	std::string m_aPbNotice[2];
 	int64_t m_PbNoticeUntil = 0;
-	void ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteSegment);
+	void ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteSegment, bool LooseEntry);
+	bool m_PbNoticeGold = false; // better than everyone in the reference file
 	vec2 m_EditCameraOffset = vec2(0.0f, 0.0f); // added to the normal camera center
 	vec2 m_EditCursor = vec2(0.0f, 0.0f); // relative to the camera center, in world units
 
@@ -218,6 +228,9 @@ private:
 		int m_Prediction = -1;
 		bool m_Unlikely = false;
 		int m_Ideal = -1;
+		bool m_ShowRefDiff = false;
+		int m_RefDiff = 0;
+		std::string m_RefName;
 	};
 	bool HudLines(SHudLines &Lines, bool Preview) const;
 	CUIRect HudRect(const SHudLines &Lines, float HudWidth, float HudHeight) const;

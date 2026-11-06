@@ -188,6 +188,8 @@ void CSplits::Load()
 
 	Storage()->CreateFolder("ddnetty", IStorage::TYPE_SAVE);
 	Storage()->CreateFolder("ddnetty/splits", IStorage::TYPE_SAVE);
+	str_format(m_aRefsPath, sizeof(m_aRefsPath), "ddnetty/splits/refs/%s.txt", aMap);
+	LoadRefs();
 
 	CLineReader LineReader;
 	if(!LineReader.OpenFile(Storage()->OpenFile(m_aPath, IOFLAG_READ, IStorage::TYPE_SAVE)))
@@ -200,6 +202,28 @@ void CSplits::Load()
 	}
 	if(NumInvalid > 0)
 		log_warn("splits", "ignored %d invalid lines in '%s'", NumInvalid, m_aPath);
+}
+
+void CSplits::LoadRefs()
+{
+	m_Refs.Clear();
+	if(!m_aRefsPath[0])
+		return;
+	CLineReader LineReader;
+	if(!LineReader.OpenFile(Storage()->OpenFile(m_aRefsPath, IOFLAG_READ, IStorage::TYPE_ALL)))
+		return;
+	int NumInvalid = 0;
+	while(const char *pLine = LineReader.Get())
+		if(!m_Refs.ParseLine(pLine))
+			NumInvalid++;
+	if(NumInvalid > 0)
+		log_warn("splits", "ignored %d invalid lines in '%s'", NumInvalid, m_aRefsPath);
+	log_info("splits", "loaded %d top player runs and %d segment bests from '%s'", (int)m_Refs.m_vRuns.size(), (int)m_Refs.m_vSegments.size(), m_aRefsPath);
+}
+
+const SRefRun *CSplits::RefRun() const
+{
+	return m_Refs.FindRun(g_Config.m_DtSplitsRefPlayer);
 }
 
 void CSplits::Save()
@@ -251,6 +275,7 @@ void CSplits::ResetRun()
 	m_vRecentPoints.clear();
 	m_HudPrediction = -1;
 	m_HudUnlikely = false;
+	m_HudHasRefDiff = false;
 	m_HudDiffUntil = 0;
 }
 
@@ -511,7 +536,7 @@ void CSplits::OnPoint(int Point, double Tick)
 				for(size_t i = 0; i < Current.m_vRouteStats.size(); i++)
 					if(Current.m_vRouteStats[i].m_From == m_LastUsedPoint && Current.m_vRouteStats[i].m_To == Point)
 						RouteSegment = (int)i;
-				ShowPbNotice(m_LastUsedPoint, Point, Millis, pStats->m_Best, RouteSegment);
+				ShowPbNotice(m_LastUsedPoint, Point, Millis, pStats->m_Best, RouteSegment, (m_UsedEntryFlags & ATTFLAGS_LOOSE_ENTRY) != 0);
 			}
 			if(m_HudHasDiff)
 				m_HudDiffUntil = time_get() + 4 * time_freq();
@@ -527,6 +552,19 @@ void CSplits::OnPoint(int Point, double Tick)
 			RaceStart = GameClient()->LastRaceTick();
 		else if(m_StartTick >= 0.0)
 			RaceStart = m_StartTick;
+		// a top player's time at this point (only the map's time checkpoints are in the database)
+		m_HudHasRefDiff = false;
+		if(g_Config.m_DtSplitsTargetMode == 3 && RaceStart >= 0.0)
+		{
+			const SRefRun *pRef = RefRun();
+			const int RefAt = pRef ? CSplitsRefs::TimeAt(*pRef, Point) : -1;
+			if(RefAt >= 0)
+			{
+				m_HudHasRefDiff = true;
+				m_HudRefDiff = (int)std::lround((Tick - RaceStart) * 1000.0 / TickSpeed) - RefAt;
+				m_HudDiffUntil = time_get() + 4 * time_freq();
+			}
+		}
 		const int Remaining = CSplitsData::Remaining(Current, m_RouteIndex, Opts);
 		if(Point != POINT_FINISH && RaceStart >= 0.0 && Remaining >= 0)
 		{
@@ -699,6 +737,11 @@ int CSplits::TargetMillis() const
 	}
 	if(g_Config.m_DtSplitsTargetMode == 2)
 		return m_Data.m_TargetMillis;
+	if(g_Config.m_DtSplitsTargetMode == 3)
+	{
+		const SRefRun *pRun = RefRun();
+		return pRun ? pRun->m_Millis : RecordMillis();
+	}
 	return RecordMillis();
 }
 
@@ -1176,15 +1219,28 @@ void CSplits::RenderGates()
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }
 
-void CSplits::ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteSegment)
+void CSplits::ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteSegment, bool LooseEntry)
 {
 	if(!g_Config.m_DtSplitsPbNotice)
 		return;
 	char aTime[32], aDiff[32];
 	FormatMillis(Millis, aTime, sizeof(aTime));
+	if(LooseEntry)
+		str_append(aTime, "*");
 	FormatDiff(Millis - OldBest, aDiff, sizeof(aDiff));
 	char aBuf[256];
-	str_format(aBuf, sizeof(aBuf), DtLocalize("%s → %s  %s  new best (%s)"), PointName(From).c_str(), PointName(To).c_str(), aTime, aDiff);
+	const SRefSegment *pOther = g_Config.m_DtSplitsPbNotice >= 2 ? m_Refs.FindSegment(From, To) : nullptr;
+	m_PbNoticeGold = pOther && Millis < pOther->m_Millis;
+	if(m_PbNoticeGold)
+	{
+		char aOther[32];
+		FormatMillis(pOther->m_Millis, aOther, sizeof(aOther));
+		str_format(aBuf, sizeof(aBuf), DtLocalize("%s → %s  %s  best of all (before %s, %s)"), PointName(From).c_str(), PointName(To).c_str(), aTime, aOther, pOther->m_Name.c_str());
+	}
+	else if(LooseEntry)
+		str_format(aBuf, sizeof(aBuf), DtLocalize("%s → %s  %s  new best (%s), loose entry"), PointName(From).c_str(), PointName(To).c_str(), aTime, aDiff);
+	else
+		str_format(aBuf, sizeof(aBuf), DtLocalize("%s → %s  %s  new best (%s)"), PointName(From).c_str(), PointName(To).c_str(), aTime, aDiff);
 	m_aPbNotice[0] = aBuf;
 	m_aPbNotice[1].clear();
 	const SOptions Opts = Options();
@@ -1219,7 +1275,7 @@ void CSplits::RenderEditHelp()
 		DrawCentered(100.0f, 8.0f, m_Notice.c_str(), ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
 	if(ShowPb && !m_EditMode)
 	{
-		DrawCentered(84.0f, 8.0f, m_aPbNotice[0].c_str(), ColorRGBA(0.45f, 1.0f, 0.55f, 1.0f));
+		DrawCentered(84.0f, 8.0f, m_aPbNotice[0].c_str(), m_PbNoticeGold ? ColorRGBA(1.0f, 0.82f, 0.25f, 1.0f) : ColorRGBA(0.45f, 1.0f, 0.55f, 1.0f));
 		if(!m_aPbNotice[1].empty())
 			DrawCentered(93.0f, 6.5f, m_aPbNotice[1].c_str(), ColorRGBA(0.75f, 0.85f, 1.0f, 1.0f));
 	}
@@ -1248,6 +1304,9 @@ bool CSplits::HudLines(SHudLines &Lines, bool Preview) const
 		Lines.m_Prediction = 598200;
 		Lines.m_Unlikely = g_Config.m_DtSplitsWarning != 0;
 		Lines.m_Ideal = g_Config.m_DtSplitsHudIdeal ? 592100 : -1;
+		Lines.m_ShowRefDiff = g_Config.m_DtSplitsTargetMode == 3;
+		Lines.m_RefDiff = -2410;
+		Lines.m_RefName = "Oak";
 		return true;
 	}
 	if(!g_Config.m_DtSplits || !g_Config.m_DtSplitsHud || !g_Config.m_ClShowhud || !GameClient()->m_GameInfo.m_Race)
@@ -1258,7 +1317,16 @@ bool CSplits::HudLines(SHudLines &Lines, bool Preview) const
 	Lines.m_Unlikely = m_HudUnlikely && g_Config.m_DtSplitsWarning != 0;
 	if(g_Config.m_DtSplitsHudIdeal && (Lines.m_ShowDiff || Lines.m_Prediction >= 0))
 		Lines.m_Ideal = m_Analysis.m_BuiltRun;
-	return Lines.m_ShowDiff || Lines.m_Prediction >= 0;
+	Lines.m_ShowRefDiff = m_HudHasRefDiff && time_get() < m_HudDiffUntil;
+	if(Lines.m_ShowRefDiff)
+	{
+		const SRefRun *pRef = RefRun();
+		Lines.m_ShowRefDiff = pRef != nullptr;
+		Lines.m_RefDiff = m_HudRefDiff;
+		if(pRef)
+			Lines.m_RefName = pRef->m_Name;
+	}
+	return Lines.m_ShowDiff || Lines.m_Prediction >= 0 || Lines.m_ShowRefDiff;
 }
 
 CUIRect CSplits::HudRect(const SHudLines &Lines, float HudWidth, float HudHeight) const
@@ -1288,6 +1356,14 @@ CUIRect CSplits::HudRect(const SHudLines &Lines, float HudWidth, float HudHeight
 	}
 	if(Lines.m_Ideal >= 0)
 	{
+		Height += LineFontSize;
+		NumLines++;
+	}
+	if(Lines.m_ShowRefDiff)
+	{
+		char aRef[96];
+		str_format(aRef, sizeof(aRef), DtLocalize("%s vs %s"), "+00.00", Lines.m_RefName.c_str());
+		Width = std::max(Width, TextRender()->TextWidth(LineFontSize, aRef));
 		Height += LineFontSize;
 		NumLines++;
 	}
@@ -1376,6 +1452,14 @@ void CSplits::RenderHudBox(bool Preview)
 		FormatMillis(Lines.m_Ideal, aTime, sizeof(aTime));
 		str_format(aBuf, sizeof(aBuf), DtLocalize("Ideal: %s"), aTime);
 		DrawCentered(Y, LineFontSize, aBuf, ColorRGBA(0.75f, 0.85f, 1.0f, 1.0f));
+		Y += LineFontSize + Gap;
+	}
+	if(Lines.m_ShowRefDiff)
+	{
+		char aDiff[32];
+		FormatDiff(Lines.m_RefDiff, aDiff, sizeof(aDiff));
+		str_format(aBuf, sizeof(aBuf), DtLocalize("%s vs %s"), aDiff, Lines.m_RefName.c_str());
+		DrawCentered(Y, LineFontSize, aBuf, Lines.m_RefDiff <= 0 ? Green : Red);
 		Y += LineFontSize + Gap;
 	}
 	if(Lines.m_Unlikely)
