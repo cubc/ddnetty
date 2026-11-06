@@ -79,7 +79,7 @@ namespace DdnettySplits
 			return pEnd != Token.c_str() && *pEnd == '\0' && std::isfinite(Out);
 		}
 
-		SSegmentStats MakeStats(int From, int To, const std::vector<const SAttempt *> &vpAttempts)
+		SSegmentStats MakeStats(int From, int To, const std::vector<const SEffectiveAttempt *> &vpAttempts, const SOptions &Options)
 		{
 			SSegmentStats Stats;
 			Stats.m_From = From;
@@ -88,22 +88,36 @@ namespace DdnettySplits
 			if(vpAttempts.empty())
 				return Stats;
 
-			Stats.m_Best = INT_MAX;
-			for(const SAttempt *pAttempt : vpAttempts)
-				Stats.m_Best = std::min(Stats.m_Best, pAttempt->m_Millis);
-			Stats.m_Last = vpAttempts.back()->m_Millis;
-			Stats.m_LastTimestamp = vpAttempts.back()->m_Timestamp;
+			// best: every attempt, or only the ones entered like in a real run
+			for(const SEffectiveAttempt *pEffective : vpAttempts)
+			{
+				if(Options.m_RunEntriesOnly && (pEffective->m_Attempt.m_Flags & ATTFLAGS_LOOSE_ENTRY))
+					continue;
+				if(Stats.m_Best < 0 || pEffective->m_Attempt.m_Millis < Stats.m_Best)
+					Stats.m_Best = pEffective->m_Attempt.m_Millis;
+			}
+			Stats.m_Last = vpAttempts.back()->m_Attempt.m_Millis;
+			Stats.m_LastTimestamp = vpAttempts.back()->m_Attempt.m_Timestamp;
+
+			// average and variation: the last focused attempts
+			std::vector<int> vFocused;
+			for(const SEffectiveAttempt *pEffective : vpAttempts)
+				if(pEffective->m_Focused)
+					vFocused.push_back(pEffective->m_Attempt.m_Millis);
+			Stats.m_Focused = (int)vFocused.size();
+			if(vFocused.empty())
+				return Stats;
 
 			const size_t Window = (size_t)CSplitsData::AVERAGE_WINDOW;
-			const size_t Start = vpAttempts.size() > Window ? vpAttempts.size() - Window : 0;
-			const double Num = (double)(vpAttempts.size() - Start);
+			const size_t Start = vFocused.size() > Window ? vFocused.size() - Window : 0;
+			const double Num = (double)(vFocused.size() - Start);
 			double Sum = 0.0;
-			for(size_t i = Start; i < vpAttempts.size(); i++)
-				Sum += vpAttempts[i]->m_Millis;
+			for(size_t i = Start; i < vFocused.size(); i++)
+				Sum += vFocused[i];
 			const double Mean = Sum / Num;
 			double Variance = 0.0;
-			for(size_t i = Start; i < vpAttempts.size(); i++)
-				Variance += (vpAttempts[i]->m_Millis - Mean) * (vpAttempts[i]->m_Millis - Mean);
+			for(size_t i = Start; i < vFocused.size(); i++)
+				Variance += (vFocused[i] - Mean) * (vFocused[i] - Mean);
 			Variance /= Num;
 			Stats.m_Mean = (int)std::lround(Mean);
 			Stats.m_StdDev = (int)std::lround(std::sqrt(Variance));
@@ -136,6 +150,8 @@ namespace DdnettySplits
 		m_vAttempts.clear();
 		m_TargetMillis = -1;
 		m_SegmentDemos = false;
+		m_Since = 0;
+		m_FocusMarginMillis = -1;
 	}
 
 	bool CSplitsData::ParseLine(const char *pLine)
@@ -153,6 +169,26 @@ namespace DdnettySplits
 			if(!NextToken(pStr, Token) || !ParseInt(Token, Millis) || Millis < -1 || Millis > 24LL * 60 * 60 * 1000)
 				return false;
 			m_TargetMillis = Millis > 0 ? (int)Millis : -1;
+			return true;
+		}
+		if(Kind == "since" || Kind == "focus")
+		{
+			std::string Token;
+			long long Value;
+			if(!NextToken(pStr, Token) || !ParseInt(Token, Value))
+				return false;
+			if(Kind == "since")
+			{
+				if(Value < 0)
+					return false;
+				m_Since = Value;
+			}
+			else
+			{
+				if(Value < -1 || Value > 10LL * 60 * 1000)
+					return false;
+				m_FocusMarginMillis = (int)Value;
+			}
 			return true;
 		}
 		if(Kind == "segdemos")
@@ -194,6 +230,8 @@ namespace DdnettySplits
 			long long RunId, Timestamp, Practice, Millis;
 			if(!ParseInt(aTokens[0], RunId) || !ParseInt(aTokens[1], Timestamp) || !ParseInt(aTokens[2], Practice) || !ParseInt(aTokens[5], Millis))
 				return false;
+			if(Practice < 0 || Practice > 0xffff)
+				return false;
 			SAttempt Attempt;
 			Attempt.m_From = PointFromString(aTokens[3].c_str());
 			Attempt.m_To = PointFromString(aTokens[4].c_str());
@@ -203,7 +241,8 @@ namespace DdnettySplits
 				return false;
 			Attempt.m_RunId = (int)RunId;
 			Attempt.m_Timestamp = Timestamp;
-			Attempt.m_Practice = Practice != 0;
+			Attempt.m_Practice = (Practice & 1) != 0;
+			Attempt.m_Flags = (int)(Practice & ~1LL);
 			Attempt.m_Millis = (int)Millis;
 			std::string Flags;
 			if(NextToken(pStr, Flags))
@@ -227,7 +266,7 @@ namespace DdnettySplits
 	std::string CSplitsData::FormatAttempt(const SAttempt &Attempt)
 	{
 		char aBuf[128];
-		std::snprintf(aBuf, sizeof(aBuf), "att %d %lld %d %s %s %d", Attempt.m_RunId, (long long)Attempt.m_Timestamp, Attempt.m_Practice ? 1 : 0,
+		std::snprintf(aBuf, sizeof(aBuf), "att %d %lld %d %s %s %d", Attempt.m_RunId, (long long)Attempt.m_Timestamp, (Attempt.m_Practice ? 1 : 0) | (Attempt.m_Flags & ~1),
 			PointToString(Attempt.m_From).c_str(), PointToString(Attempt.m_To).c_str(), Attempt.m_Millis);
 		std::string Line = aBuf;
 		if(Attempt.m_FromGate)
@@ -242,6 +281,10 @@ namespace DdnettySplits
 			Result += "target " + std::to_string(m_TargetMillis) + "\n";
 		if(m_SegmentDemos)
 			Result += "segdemos 1\n";
+		if(m_Since > 0)
+			Result += "since " + std::to_string(m_Since) + "\n";
+		if(m_FocusMarginMillis >= 0)
+			Result += "focus " + std::to_string(m_FocusMarginMillis) + "\n";
 		for(const SGate &Gate : m_vGates)
 			Result += FormatGate(Gate) + "\n";
 		for(const SAttempt &Attempt : m_vAttempts)
@@ -321,6 +364,7 @@ namespace DdnettySplits
 				Current.m_Attempt.m_To = POINT_NONE;
 				Current.m_Attempt.m_Millis = 0;
 				Current.m_Attempt.m_Practice = false;
+				Current.m_Attempt.m_Flags = 0;
 				Current.m_Attempt.m_Timestamp = Timestamp;
 			};
 
@@ -332,6 +376,8 @@ namespace DdnettySplits
 
 				if(Open)
 				{
+					// how the segment was entered comes from its first piece, the rest adds up
+					Current.m_Attempt.m_Flags |= Current.m_vRawIndices.empty() ? Attempt.m_Flags : (Attempt.m_Flags & ~ATTFLAGS_ENTRY);
 					Current.m_Attempt.m_Millis += Attempt.m_Millis;
 					Current.m_Attempt.m_Practice = Current.m_Attempt.m_Practice || Attempt.m_Practice;
 					Current.m_vRawIndices.push_back(i);
@@ -342,7 +388,9 @@ namespace DdnettySplits
 					if(Open)
 					{
 						Current.m_Attempt.m_To = Attempt.m_To;
-						if(Current.m_Attempt.m_From != Current.m_Attempt.m_To && (Options.m_CountPractice || !Current.m_Attempt.m_Practice))
+						const bool Dummy = (Current.m_Attempt.m_Flags & (ATTFLAG_DUMMY | ATTFLAG_SWITCHED)) != 0;
+						if(Current.m_Attempt.m_From != Current.m_Attempt.m_To && (Options.m_CountPractice || !Current.m_Attempt.m_Practice) &&
+							Current.m_Attempt.m_Timestamp >= Options.m_Since && (Options.m_CountDummy || !Dummy))
 							vResult.push_back(Current);
 					}
 					const int64_t NextTimestamp = i + 1 < ChainEnd ? m_vAttempts[i + 1].m_Timestamp : Attempt.m_Timestamp;
@@ -358,23 +406,13 @@ namespace DdnettySplits
 	{
 		SAnalysis Analysis;
 		Analysis.m_vAttempts = EffectiveAttempts(Options);
-		const std::vector<SEffectiveAttempt> &vAttempts = Analysis.m_vAttempts;
+		std::vector<SEffectiveAttempt> &vAttempts = Analysis.m_vAttempts;
 
-		// group by segment, keeping the order the segments first appeared in
-		std::map<std::pair<int, int>, std::vector<const SAttempt *>> SegmentAttempts;
-		std::vector<std::pair<int, int>> vSegmentOrder;
-		for(const SEffectiveAttempt &Effective : vAttempts)
-		{
-			const std::pair<int, int> Key(Effective.m_Attempt.m_From, Effective.m_Attempt.m_To);
-			auto &vpList = SegmentAttempts[Key];
-			if(vpList.empty())
-				vSegmentOrder.push_back(Key);
-			vpList.push_back(&Effective.m_Attempt);
-		}
-
-		// complete runs: the latest one gives the route, the fastest real one is the best finish
+		// runs: the latest complete one gives the route, the fastest real one is the best finish
+		// and its times at each point are the pace the focus margin is measured against
 		int64_t LatestCompleteTimestamp = INT64_MIN;
 		std::vector<int> vLatestRoute;
+		std::map<int, int> BestPace; // point -> run time of the best finish when it got there
 		size_t RunStart = 0;
 		while(RunStart < vAttempts.size())
 		{
@@ -382,19 +420,28 @@ namespace DdnettySplits
 			while(RunEnd < vAttempts.size() && vAttempts[RunEnd].m_Attempt.m_RunId == vAttempts[RunStart].m_Attempt.m_RunId && vAttempts[RunEnd].m_Attempt.m_From == vAttempts[RunEnd - 1].m_Attempt.m_To)
 				RunEnd++;
 
-			if(vAttempts[RunStart].m_Attempt.m_From == POINT_START && vAttempts[RunEnd - 1].m_Attempt.m_To == POINT_FINISH)
+			const bool FromStart = vAttempts[RunStart].m_Attempt.m_From == POINT_START;
+			int Total = 0;
+			bool Practice = false;
+			for(size_t i = RunStart; i < RunEnd; i++)
 			{
-				int Total = 0;
-				bool Practice = false;
+				vAttempts[i].m_EntryMillis = FromStart ? Total : -1;
+				Total += vAttempts[i].m_Attempt.m_Millis;
+				Practice = Practice || vAttempts[i].m_Attempt.m_Practice;
+			}
+
+			if(FromStart && vAttempts[RunEnd - 1].m_Attempt.m_To == POINT_FINISH)
+			{
 				std::vector<int> vRoute = {POINT_START};
 				for(size_t i = RunStart; i < RunEnd; i++)
-				{
-					Total += vAttempts[i].m_Attempt.m_Millis;
-					Practice = Practice || vAttempts[i].m_Attempt.m_Practice;
 					vRoute.push_back(vAttempts[i].m_Attempt.m_To);
-				}
 				if(!Practice && (Analysis.m_BestFinished < 0 || Total < Analysis.m_BestFinished))
+				{
 					Analysis.m_BestFinished = Total;
+					BestPace.clear();
+					for(size_t i = RunStart; i < RunEnd; i++)
+						BestPace.emplace(vAttempts[i].m_Attempt.m_From, vAttempts[i].m_EntryMillis);
+				}
 				if(vAttempts[RunStart].m_Attempt.m_Timestamp >= LatestCompleteTimestamp)
 				{
 					LatestCompleteTimestamp = vAttempts[RunStart].m_Attempt.m_Timestamp;
@@ -402,6 +449,30 @@ namespace DdnettySplits
 				}
 			}
 			RunStart = RunEnd;
+		}
+
+		// focused: entered like in a real run and, with a margin, not too far behind the best run
+		for(SEffectiveAttempt &Effective : vAttempts)
+		{
+			Effective.m_Focused = (Effective.m_Attempt.m_Flags & ATTFLAGS_LOOSE_ENTRY) == 0;
+			if(!Effective.m_Focused || Options.m_FocusMarginMillis <= 0 || BestPace.empty())
+				continue;
+			auto It = BestPace.find(Effective.m_Attempt.m_From);
+			if(It == BestPace.end())
+				continue; // not on the best run's route: nothing to compare with
+			Effective.m_Focused = Effective.m_EntryMillis >= 0 && Effective.m_EntryMillis <= It->second + Options.m_FocusMarginMillis;
+		}
+
+		// group by segment, keeping the order the segments first appeared in
+		std::map<std::pair<int, int>, std::vector<const SEffectiveAttempt *>> SegmentAttempts;
+		std::vector<std::pair<int, int>> vSegmentOrder;
+		for(const SEffectiveAttempt &Effective : vAttempts)
+		{
+			const std::pair<int, int> Key(Effective.m_Attempt.m_From, Effective.m_Attempt.m_To);
+			auto &vpList = SegmentAttempts[Key];
+			if(vpList.empty())
+				vSegmentOrder.push_back(Key);
+			vpList.push_back(&Effective);
 		}
 
 		if(!vLatestRoute.empty())
@@ -424,8 +495,8 @@ namespace DdnettySplits
 					if(Key.first != Current || Visited.count(Key.second))
 						continue;
 					int Best = INT_MAX;
-					for(const SAttempt *pAttempt : vpList)
-						Best = std::min(Best, pAttempt->m_Millis);
+					for(const SEffectiveAttempt *pEffective : vpList)
+						Best = std::min(Best, pEffective->m_Attempt.m_Millis);
 					if((int)vpList.size() > BestCount || ((int)vpList.size() == BestCount && Best < BestTime))
 					{
 						BestNext = Key.second;
@@ -450,7 +521,7 @@ namespace DdnettySplits
 			const std::pair<int, int> Key(Analysis.m_vRoute[i], Analysis.m_vRoute[i + 1]);
 			RouteSegments.insert(Key);
 			auto It = SegmentAttempts.find(Key);
-			SSegmentStats Stats = It != SegmentAttempts.end() ? MakeStats(Key.first, Key.second, It->second) : MakeStats(Key.first, Key.second, {});
+			SSegmentStats Stats = It != SegmentAttempts.end() ? MakeStats(Key.first, Key.second, It->second, Options) : MakeStats(Key.first, Key.second, {}, Options);
 			const int Ref = Reference(Stats, Options);
 			if(Ref < 0)
 				Analysis.m_BuiltRunMissing++;
@@ -463,7 +534,7 @@ namespace DdnettySplits
 
 		for(const auto &Key : vSegmentOrder)
 			if(!RouteSegments.count(Key))
-				Analysis.m_vOtherStats.push_back(MakeStats(Key.first, Key.second, SegmentAttempts[Key]));
+				Analysis.m_vOtherStats.push_back(MakeStats(Key.first, Key.second, SegmentAttempts[Key], Options));
 
 		return Analysis;
 	}

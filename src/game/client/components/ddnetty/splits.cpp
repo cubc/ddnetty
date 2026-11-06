@@ -69,7 +69,8 @@ namespace
 
 	bool SameOptions(const SOptions &A, const SOptions &B)
 	{
-		return A.m_UseTimecps == B.m_UseTimecps && A.m_UseGates == B.m_UseGates && A.m_CountPractice == B.m_CountPractice && A.m_UseAverage == B.m_UseAverage;
+		return A.m_UseTimecps == B.m_UseTimecps && A.m_UseGates == B.m_UseGates && A.m_CountPractice == B.m_CountPractice && A.m_UseAverage == B.m_UseAverage &&
+		       A.m_Since == B.m_Since && A.m_FocusMarginMillis == B.m_FocusMarginMillis && A.m_RunEntriesOnly == B.m_RunEntriesOnly && A.m_CountDummy == B.m_CountDummy;
 	}
 } // namespace
 
@@ -121,7 +122,39 @@ SOptions CSplits::Options() const
 	Options.m_UseGates = g_Config.m_DtSplitsSource != 1;
 	Options.m_CountPractice = g_Config.m_DtSplitsPractice != 0;
 	Options.m_UseAverage = g_Config.m_DtSplitsAverage != 0;
+	Options.m_Since = m_Data.m_Since;
+	Options.m_FocusMarginMillis = FocusMargin();
+	Options.m_RunEntriesOnly = g_Config.m_DtSplitsRunEntriesOnly != 0;
+	Options.m_CountDummy = g_Config.m_DtSplitsCountDummy != 0;
 	return Options;
+}
+
+int CSplits::FocusMargin() const
+{
+	return m_Data.m_FocusMarginMillis >= 0 ? m_Data.m_FocusMarginMillis : g_Config.m_DtSplitsFocusMargin;
+}
+
+void CSplits::SetSince(int64_t Timestamp)
+{
+	m_Data.m_Since = std::max<int64_t>(Timestamp, 0);
+	m_AnalysisDirty = true;
+	Save();
+}
+
+void CSplits::SetFocusMarginOnMap(int Millis)
+{
+	m_Data.m_FocusMarginMillis = Millis < 0 ? -1 : std::min(Millis, 10 * 60 * 1000);
+	m_AnalysisDirty = true;
+	Save();
+}
+
+int CSplits::RawBest(int From, int To) const
+{
+	int Best = -1;
+	for(const SAttempt &Attempt : m_Data.m_vAttempts)
+		if(Attempt.m_From == From && Attempt.m_To == To && (Best < 0 || Attempt.m_Millis < Best))
+			Best = Attempt.m_Millis;
+	return Best;
 }
 
 const SAnalysis &CSplits::Analysis()
@@ -213,6 +246,9 @@ void CSplits::ResetRun()
 	m_InTimecp = -1;
 	m_InStart = false;
 	m_InFinish = false;
+	m_EntryFlags = 0;
+	m_UsedEntryFlags = 0;
+	m_vRecentPoints.clear();
 	m_HudPrediction = -1;
 	m_HudUnlikely = false;
 	m_HudDiffUntil = 0;
@@ -411,10 +447,40 @@ void CSplits::OnPoint(int Point, double Tick)
 		m_LastUsedPointTick = Tick;
 		m_RouteIndex = 0;
 		m_StartTick = Tick;
+		m_EntryFlags = 0;
+		m_UsedEntryFlags = 0;
+		m_vRecentPoints.assign(1, POINT_START);
 		m_HudPrediction = -1;
 		m_HudUnlikely = false;
 		m_HudDiffUntil = 0;
 		return;
+	}
+
+	// how a segment from this point is entered
+	int NewEntryFlags = 0;
+	if(Point == m_LastPoint)
+	{
+		m_EntryFlags |= ATTFLAG_RECROSSED; // the segment starts over
+	}
+	else if(m_LastPoint == POINT_NONE)
+	{
+		NewEntryFlags |= ATTFLAG_MID_START;
+	}
+	else
+	{
+		// went back: the point was crossed a moment ago already
+		const size_t NumRecent = m_vRecentPoints.size();
+		for(size_t i = NumRecent > 4 ? NumRecent - 4 : 0; i + 1 < NumRecent; i++)
+			if(m_vRecentPoints[i] == Point)
+				NewEntryFlags |= ATTFLAG_AFTER_BACK;
+		// waited before the point: the hop into it took much longer than its best
+		if(g_Config.m_DtSplitsWaitLimit > 0)
+		{
+			const int Hop = (int)std::lround((Tick - m_LastPointTick) * 1000.0 / TickSpeed);
+			const int Best = RawBest(m_LastPoint, Point);
+			if(Hop - std::max(Best, 0) > g_Config.m_DtSplitsWaitLimit * 1000)
+				NewEntryFlags |= ATTFLAG_LONG_WAIT;
+		}
 	}
 
 	// HUD: compare with the stats from before this attempt
@@ -435,8 +501,18 @@ void CSplits::OnPoint(int Point, double Tick)
 			m_HudHasDiff = Reference >= 0;
 			m_HudDiff = Reference >= 0 ? Millis - Reference : 0;
 			// a new best segment: remember it, its demo is cut when the run ends
-			if(SegmentDemosActive() && (Opts.m_CountPractice || !IsPractice()) && (!pStats || pStats->m_Best < 0 || Millis < pStats->m_Best))
+			const bool Counts = (Opts.m_CountPractice || !IsPractice()) && (!Opts.m_RunEntriesOnly || !(m_UsedEntryFlags & ATTFLAGS_LOOSE_ENTRY));
+			const bool NewBest = Counts && (!pStats || pStats->m_Best < 0 || Millis < pStats->m_Best);
+			if(NewBest && SegmentDemosActive())
 				QueueClip(m_LastUsedPoint, Point, Millis, m_LastUsedPointTick, Tick);
+			if(NewBest && pStats && pStats->m_Best >= 0)
+			{
+				int RouteSegment = -1;
+				for(size_t i = 0; i < Current.m_vRouteStats.size(); i++)
+					if(Current.m_vRouteStats[i].m_From == m_LastUsedPoint && Current.m_vRouteStats[i].m_To == Point)
+						RouteSegment = (int)i;
+				ShowPbNotice(m_LastUsedPoint, Point, Millis, pStats->m_Best, RouteSegment);
+			}
 			if(m_HudHasDiff)
 				m_HudDiffUntil = time_get() + 4 * time_freq();
 		}
@@ -459,6 +535,10 @@ void CSplits::OnPoint(int Point, double Tick)
 			m_HudUnlikely = Target > 0 && m_HudPrediction > Target;
 		}
 
+		if(m_LastUsedPoint == Point)
+			m_UsedEntryFlags |= ATTFLAG_RECROSSED;
+		else
+			m_UsedEntryFlags = NewEntryFlags;
 		m_LastUsedPoint = Point;
 		m_LastUsedPointTick = Tick;
 	}
@@ -469,6 +549,8 @@ void CSplits::OnPoint(int Point, double Tick)
 		m_RunId = m_Data.NextRunId();
 		m_LastPoint = Point;
 		m_LastPointTick = Tick;
+		m_EntryFlags = NewEntryFlags;
+		m_vRecentPoints.assign(1, Point);
 		return;
 	}
 	if(Point == m_LastPoint)
@@ -487,12 +569,22 @@ void CSplits::OnPoint(int Point, double Tick)
 	Attempt.m_Millis = (int)std::lround((Tick - m_LastPointTick) * 1000.0 / TickSpeed);
 	// two points crossed at the same moment still give a (0 ms) segment, otherwise the run would have a gap
 	Attempt.m_Millis = std::max(Attempt.m_Millis, 0);
+	Attempt.m_Flags = m_EntryFlags;
+	const auto &aLocalIds = GameClient()->m_aLocalIds;
+	if(aLocalIds[1] >= 0 && m_TrackedClientId == aLocalIds[1])
+		Attempt.m_Flags |= ATTFLAG_DUMMY;
+	if(m_SwitchedTee)
+		Attempt.m_Flags |= ATTFLAG_SWITCHED;
 	m_Data.m_vAttempts.push_back(Attempt);
 	Append(Attempt);
 	m_AnalysisDirty = true;
 
 	m_LastPoint = Point;
 	m_LastPointTick = Tick;
+	m_EntryFlags = NewEntryFlags;
+	m_vRecentPoints.push_back(Point);
+	if(m_vRecentPoints.size() > 8)
+		m_vRecentPoints.erase(m_vRecentPoints.begin());
 	if(Point == POINT_FINISH)
 	{
 		m_LastPoint = POINT_NONE;
@@ -1082,10 +1174,36 @@ void CSplits::RenderGates()
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }
 
+void CSplits::ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteSegment)
+{
+	if(!g_Config.m_DtSplitsPbNotice)
+		return;
+	char aTime[32], aDiff[32];
+	FormatMillis(Millis, aTime, sizeof(aTime));
+	FormatDiff(Millis - OldBest, aDiff, sizeof(aDiff));
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), DtLocalize("%s → %s  %s  new best (%s)"), PointName(From).c_str(), PointName(To).c_str(), aTime, aDiff);
+	m_aPbNotice[0] = aBuf;
+	m_aPbNotice[1].clear();
+	const SOptions Opts = Options();
+	const SAnalysis &Current = Analysis();
+	if(RouteSegment >= 0 && !Opts.m_UseAverage && Current.m_BuiltRun >= 0)
+	{
+		char aIdeal[32];
+		FormatMillis(Current.m_BuiltRun - (OldBest - Millis), aIdeal, sizeof(aIdeal));
+		str_format(aBuf, sizeof(aBuf), DtLocalize("Ideal run %s (%s)"), aIdeal, aDiff);
+		m_aPbNotice[1] = aBuf;
+	}
+	m_PbNoticeUntil = time_get() + 3 * time_freq();
+	if(g_Config.m_DtSplitsPbSound)
+		GameClient()->m_Sounds.Play(CSounds::CHN_GUI, SOUND_CHAT_HIGHLIGHT, 0.6f);
+}
+
 void CSplits::RenderEditHelp()
 {
 	const bool ShowNotice = time_get() < m_NoticeUntil && !m_Notice.empty();
-	if(!m_EditMode && !ShowNotice)
+	const bool ShowPb = time_get() < m_PbNoticeUntil && !m_aPbNotice[0].empty();
+	if(!m_EditMode && !ShowNotice && !ShowPb)
 		return;
 	const float Height = 300.0f;
 	const float Width = Height * Graphics()->ScreenAspect();
@@ -1096,6 +1214,12 @@ void CSplits::RenderEditHelp()
 	};
 	if(ShowNotice)
 		DrawCentered(100.0f, 8.0f, m_Notice.c_str(), ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+	if(ShowPb && !m_EditMode)
+	{
+		DrawCentered(84.0f, 8.0f, m_aPbNotice[0].c_str(), ColorRGBA(0.45f, 1.0f, 0.55f, 1.0f));
+		if(!m_aPbNotice[1].empty())
+			DrawCentered(93.0f, 6.5f, m_aPbNotice[1].c_str(), ColorRGBA(0.75f, 0.85f, 1.0f, 1.0f));
+	}
 	if(m_EditMode)
 	{
 		DrawCentered(75.0f, 7.0f, DtLocalize("Checkpoint edit mode: drag to create · drag an end to move · double click renames · right click deletes · Esc exits"), ColorRGBA(1.0f, 0.85f, 0.2f, 1.0f));

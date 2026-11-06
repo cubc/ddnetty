@@ -572,3 +572,59 @@ Ideal run demo: %s saved
 [DDNetty]
 Ideal run demo failed: %s
 == Demo da run ideal falhou: %s
+
+[DDNetty]
+%s → %s  %s  new best (%s)
+== %s → %s  %s  novo melhor (%s)
+
+[DDNetty]
+Ideal run %s (%s)
+== Run ideal %s (%s)
+
+[DDNetty]
+Focused runs:
+== Runs focadas:
+
+[DDNetty]
+Count from now
+== Contar a partir de agora
+
+[DDNetty]
+Stats, best segments and the ideal run only use the times from now on. Nothing is deleted.
+== As estatísticas, os melhores trechos e a run ideal só usam os tempos daqui pra frente. Nada é apagado.
+
+[DDNetty]
+Show all
+== Mostrar tudo
+
+[DDNetty]
+since %s
+== desde %s
+
+[DDNetty]
+Behind my best by at most
+== Atrás do meu melhor no máximo
+
+[DDNetty]
+Seconds, on this map. The average and the variation only count segments you entered at most this far behind your best run. 0 turns it off, empty uses the default.
+== Segundos, neste mapa. A média e a variação só contam trechos em que você entrou no máximo isso atrás da sua melhor run. 0 desliga, vazio usa o padrão.
+
+[DDNetty]
+Best only from real runs
+== Melhor só de runs de verdade
+
+[DDNetty]
+Best segments and the ideal run leave out segments entered after starting in the middle, going back, waiting or crossing the checkpoint again.
+== Os melhores trechos e a run ideal deixam de fora trechos em que você entrou depois de começar no meio, voltar, esperar ou cruzar o checkpoint de novo.
+
+[DDNetty]
+Count dummy
+== Contar dummy
+
+[DDNetty]
+New best message
+== Mensagem de novo melhor
+
+[DDNetty]
+Sound
+== Som

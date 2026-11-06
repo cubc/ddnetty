@@ -44,6 +44,19 @@ namespace DdnettySplits
 		std::string m_Name;
 	};
 
+	// how a segment was entered; stored next to the practice bit in the "att" line (bit 0 = practice)
+	enum
+	{
+		ATTFLAG_MID_START = 1 << 1, // the attempt began here instead of at the start line
+		ATTFLAG_AFTER_BACK = 1 << 2, // went back through a point in the 3 points before
+		ATTFLAG_LONG_WAIT = 1 << 3, // waited longer than dt_splits_wait_limit before this point
+		ATTFLAG_RECROSSED = 1 << 4, // crossed the point again: the time started over
+		ATTFLAG_DUMMY = 1 << 5, // run with the dummy
+		ATTFLAG_SWITCHED = 1 << 6, // the run went over from one tee to the other
+		ATTFLAGS_LOOSE_ENTRY = ATTFLAG_MID_START | ATTFLAG_AFTER_BACK | ATTFLAG_LONG_WAIT | ATTFLAG_RECROSSED,
+		ATTFLAGS_ENTRY = ATTFLAGS_LOOSE_ENTRY, // flags that belong to how the segment was entered
+	};
+
 	// one timed segment between two consecutive points of a continuous run
 	struct SAttempt
 	{
@@ -54,6 +67,7 @@ namespace DdnettySplits
 		int m_To = POINT_NONE;
 		int m_Millis = 0;
 		bool m_FromGate = false; // made by merging around a deleted or moved checkpoint (informational)
+		int m_Flags = 0; // ATTFLAG_*
 	};
 
 	struct SOptions
@@ -62,6 +76,11 @@ namespace DdnettySplits
 		bool m_UseGates = true;
 		bool m_CountPractice = true;
 		bool m_UseAverage = false; // reference = mean of the recent attempts instead of the best
+		// focused runs
+		int64_t m_Since = 0; // only attempts from this unix time on count (0 = all)
+		int m_FocusMarginMillis = 0; // average and variation only from segments entered at most this far behind your best run (0 = off)
+		bool m_RunEntriesOnly = false; // best and ideal run leave out segments with a loose entry
+		bool m_CountDummy = true; // runs with the dummy (or switching tees) count
 	};
 
 	struct SSegmentStats
@@ -71,8 +90,9 @@ namespace DdnettySplits
 		int m_Count = 0;
 		int m_Best = -1;
 		int m_Last = -1;
-		int m_Mean = -1; // mean of the last AVERAGE_WINDOW attempts
+		int m_Mean = -1; // mean of the last AVERAGE_WINDOW focused attempts
 		int m_StdDev = -1; // standard deviation of the same window
+		int m_Focused = 0; // how many attempts are focused (the average is made of those)
 		int64_t m_LastTimestamp = 0;
 	};
 
@@ -95,6 +115,8 @@ namespace DdnettySplits
 	{
 		SAttempt m_Attempt;
 		std::vector<size_t> m_vRawIndices;
+		int m_EntryMillis = -1; // run time when the segment was entered, -1 if the run didn't start at the start line
+		bool m_Focused = true; // counts for the average (focused run filters)
 	};
 
 	struct SAnalysis
@@ -121,6 +143,8 @@ namespace DdnettySplits
 		std::vector<SGate> m_vGates;
 		std::vector<SAttempt> m_vAttempts;
 		int m_TargetMillis = -1; // custom target time for this map, -1 if not set
+		int64_t m_Since = 0; // focused runs count from here on ("since"), 0 = all
+		int m_FocusMarginMillis = -1; // this map's focus margin ("focus"), -1 = the dt_splits_focus_margin default
 		bool m_SegmentDemos = false; // save a demo of every new best segment on this map ("segdemos 1")
 
 		void Clear();

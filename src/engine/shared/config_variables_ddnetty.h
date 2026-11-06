@@ -28,6 +28,12 @@ MACRO_CONFIG_INT(DtSplitsIdealDemo, dt_splits_ideal_demo, 1, 0, 1, CFGFLAG_CLIEN
 MACRO_CONFIG_INT(DtSplitsIdealDemoBlend, dt_splits_ideal_demo_blend, 25, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Ticks over which a seam of the ideal run demo is smoothed")
 MACRO_CONFIG_INT(DtSplitsIdealDemoShots, dt_splits_ideal_demo_shots, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Keep weapon shots and their sounds in the ideal run demo")
 MACRO_CONFIG_INT(DtSplitsIdealGhost, dt_splits_ideal_ghost, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Also save the ideal run as a ghost (\"ideal run\" in the ghost list) to race against")
+MACRO_CONFIG_INT(DtSplitsFocusMargin, dt_splits_focus_margin, 3000, 0, 600000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Average and variation only count segments entered at most this many ms behind your best run (0 = off, a map can set its own)")
+MACRO_CONFIG_INT(DtSplitsRunEntriesOnly, dt_splits_run_entries_only, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best segments and the ideal run only count segments entered like in a real run (not after a mid start, going back, waiting or crossing again)")
+MACRO_CONFIG_INT(DtSplitsWaitLimit, dt_splits_wait_limit, 15, 0, 600, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Seconds over your best before a point after which the next segment counts as entered after waiting (0 = off)")
+MACRO_CONFIG_INT(DtSplitsCountDummy, dt_splits_count_dummy, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Count runs made with the dummy or switching between your tees")
+MACRO_CONFIG_INT(DtSplitsPbNotice, dt_splits_pb_notice, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show a message when you make a new best segment")
+MACRO_CONFIG_INT(DtSplitsPbSound, dt_splits_pb_sound, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Play a sound with the new best segment message")
 
 // BestClient network
 MACRO_CONFIG_INT(DtBestClientPresence, dt_bestclient_presence, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Announce yourself to the BestClient indicator server (it marks DDNetty as FAKE since it is not an official BestClient build)")

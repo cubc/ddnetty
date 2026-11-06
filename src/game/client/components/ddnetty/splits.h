@@ -56,6 +56,12 @@ public:
 	// segment demos: a demo of every new best segment, cut out of the replay recorder
 	bool SegmentDemosOnMap() const { return m_Data.m_SegmentDemos; }
 	void SetSegmentDemosOnMap(bool On);
+	// focused runs: data counts from a moment on, and the average only from runs close to your best
+	int64_t Since() const { return m_Data.m_Since; }
+	void SetSince(int64_t Timestamp); // 0 shows everything again
+	int FocusMarginOnMap() const { return m_Data.m_FocusMarginMillis; } // -1 = the default
+	void SetFocusMarginOnMap(int Millis); // -1 goes back to the default
+	int FocusMargin() const; // the margin in use on this map
 	bool SegmentDemosActive() const;
 	bool WantsReplayRecorder() const { return HasMap() && SegmentDemosActive(); }
 	int PendingSegmentDemos() const { return (int)(m_vPendingClips.size() + m_vClipJobs.size()); }
@@ -100,6 +106,11 @@ private:
 	int m_InTimecp = -1;
 	bool m_InStart = false;
 	bool m_InFinish = false;
+	// how the segment being timed was entered (ATTFLAG_*), for the raw and for the used points
+	int m_EntryFlags = 0;
+	int m_UsedEntryFlags = 0;
+	std::vector<int> m_vRecentPoints; // the last points of this run, to notice going back
+	int RawBest(int From, int To) const;
 
 	// HUD
 	int64_t m_HudDiffUntil = 0;
@@ -132,6 +143,10 @@ private:
 	// short message in the middle of the screen (e.g. after cycling the split points)
 	std::string m_Notice;
 	int64_t m_NoticeUntil = 0;
+	// new best segment message, two lines under the HUD
+	std::string m_aPbNotice[2];
+	int64_t m_PbNoticeUntil = 0;
+	void ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteSegment);
 	vec2 m_EditCameraOffset = vec2(0.0f, 0.0f); // added to the normal camera center
 	vec2 m_EditCursor = vec2(0.0f, 0.0f); // relative to the camera center, in world units
 
