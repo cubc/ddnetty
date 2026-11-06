@@ -1776,29 +1776,56 @@ void CSplits::StartIdealDemo()
 	// the fastest demo of every segment of the route
 	std::vector<CIdealDemoJob::SClip> vClips;
 	int Missing = 0;
-	for(size_t i = 0; i + 1 < Current.m_vRoute.size(); i++)
-	{
-		const SInfo *pBest = nullptr;
-		for(const SInfo &Info : Ctx.m_vInfos)
-			if(Info.m_From == Current.m_vRoute[i] && Info.m_To == Current.m_vRoute[i + 1] && (!pBest || Info.m_Millis < pBest->m_Millis))
-				pBest = &Info;
-		if(!pBest)
+	auto &&Collect = [&](const std::vector<int> &vRoute) {
+		vClips.clear();
+		Missing = 0;
+		for(size_t i = 0; i + 1 < vRoute.size(); i++)
 		{
-			Missing++;
-			continue;
+			const SInfo *pBest = nullptr;
+			for(const SInfo &Info : Ctx.m_vInfos)
+				if(Info.m_From == vRoute[i] && Info.m_To == vRoute[i + 1] && (!pBest || Info.m_Millis < pBest->m_Millis))
+					pBest = &Info;
+			if(!pBest)
+			{
+				Missing++;
+				continue;
+			}
+			CIdealDemoJob::SClip Clip;
+			Clip.m_Demo = pBest->m_Demo;
+			Clip.m_Millis = pBest->m_Millis;
+			Clip.m_StartTick = pBest->m_Start;
+			Clip.m_EndTick = pBest->m_End;
+			Clip.m_MainId = pBest->m_MainId;
+			Clip.m_DuoId = pBest->m_DuoId;
+			vClips.push_back(Clip);
 		}
-		CIdealDemoJob::SClip Clip;
-		Clip.m_Demo = pBest->m_Demo;
-		Clip.m_Millis = pBest->m_Millis;
-		Clip.m_StartTick = pBest->m_Start;
-		Clip.m_EndTick = pBest->m_End;
-		Clip.m_MainId = pBest->m_MainId;
-		Clip.m_DuoId = pBest->m_DuoId;
-		vClips.push_back(Clip);
+	};
+	Collect(Current.m_vRoute);
+	int RouteSegments = (int)Current.m_vRoute.size() - 1;
+	if(Missing > 0)
+	{
+		// demos cut between the map's time checkpoints (older ones, or imported) still make the run
+		SOptions TimecpOptions = Options();
+		TimecpOptions.m_UseGates = false;
+		TimecpOptions.m_UseTimecps = true;
+		const SAnalysis TimecpAnalysis = m_Data.Analyze(TimecpOptions);
+		if(TimecpAnalysis.m_RouteComplete && TimecpAnalysis.m_vRoute != Current.m_vRoute)
+		{
+			const int MissingBefore = Missing;
+			const std::vector<CIdealDemoJob::SClip> vBefore = vClips;
+			Collect(TimecpAnalysis.m_vRoute);
+			if(Missing > 0)
+			{
+				Missing = MissingBefore;
+				vClips = vBefore;
+			}
+			else
+				RouteSegments = (int)TimecpAnalysis.m_vRoute.size() - 1;
+		}
 	}
 	if(Missing > 0)
 	{
-		str_format(m_aIdealStatus, sizeof(m_aIdealStatus), DtLocalize("Ideal run demo: %d of %d segments still without a demo"), Missing, (int)Current.m_vRoute.size() - 1);
+		str_format(m_aIdealStatus, sizeof(m_aIdealStatus), DtLocalize("Ideal run demo: %d of %d segments still without a demo"), Missing, RouteSegments);
 		if(Manual)
 		{
 			m_Notice = m_aIdealStatus;
