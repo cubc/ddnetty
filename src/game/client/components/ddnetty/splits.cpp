@@ -74,6 +74,31 @@ namespace
 	}
 } // namespace
 
+void CSplits::OnInit()
+{
+	// demos made by DDNetty live in their own folder; move the ones saved by older versions
+	const char *apOld[] = {"demos/segments", "demos/ideal"};
+	const char *apNew[] = {"demos/ddnetty/segments", "demos/ddnetty/ideal"};
+	for(int i = 0; i < 2; i++)
+	{
+		if(!Storage()->FolderExists(apOld[i], IStorage::TYPE_SAVE) || Storage()->FolderExists(apNew[i], IStorage::TYPE_SAVE))
+			continue;
+		Storage()->CreateFolder("demos/ddnetty", IStorage::TYPE_SAVE);
+		if(Storage()->RenameFile(apOld[i], apNew[i], IStorage::TYPE_SAVE))
+			log_info("splits", "moved '%s' to '%s'", apOld[i], apNew[i]);
+		else
+			log_warn("splits", "could not move '%s' to '%s'", apOld[i], apNew[i]);
+	}
+}
+
+void CSplits::CreateDemoFolders()
+{
+	Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
+	Storage()->CreateFolder("demos/ddnetty", IStorage::TYPE_SAVE);
+	Storage()->CreateFolder("demos/ddnetty/segments", IStorage::TYPE_SAVE);
+	Storage()->CreateFolder("demos/ddnetty/ideal", IStorage::TYPE_SAVE);
+}
+
 void CSplits::OnConsoleInit()
 {
 	Console()->Register("dt_splits_edit", "", CFGFLAG_CLIENT, ConEdit, this, "Toggle the edit mode for your split checkpoints");
@@ -184,7 +209,7 @@ void CSplits::Load()
 	char aSha256[SHA256_MAXSTRSIZE];
 	sha256_str(GameClient()->Map()->Sha256(), aSha256, sizeof(aSha256));
 	str_format(m_aPath, sizeof(m_aPath), "ddnetty/splits/%s_%.8s.txt", aMap, aSha256);
-	str_format(m_aSegmentFolder, sizeof(m_aSegmentFolder), "demos/segments/%s_%.8s", aMap, aSha256);
+	str_format(m_aSegmentFolder, sizeof(m_aSegmentFolder), "demos/ddnetty/segments/%s_%.8s", aMap, aSha256);
 
 	Storage()->CreateFolder("ddnetty", IStorage::TYPE_SAVE);
 	Storage()->CreateFolder("ddnetty/splits", IStorage::TYPE_SAVE);
@@ -1543,8 +1568,7 @@ void CSplits::FlushClips()
 	if(!HasMap() || Client()->State() != IClient::STATE_ONLINE)
 		return;
 
-	Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
-	Storage()->CreateFolder("demos/segments", IStorage::TYPE_SAVE);
+	CreateDemoFolders();
 	Storage()->CreateFolder(m_aSegmentFolder, IStorage::TYPE_SAVE);
 
 	const int Margin = Client()->GameTickSpeed(); // 1 s before and after the segment
@@ -1799,10 +1823,9 @@ void CSplits::StartIdealDemo()
 	for(char *p = aTime; *p; p++)
 		if(*p == ':')
 			*p = '-';
-	Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
-	Storage()->CreateFolder("demos/ideal", IStorage::TYPE_SAVE);
+	CreateDemoFolders();
 	char aDst[IO_MAX_PATH_LENGTH];
-	str_format(aDst, sizeof(aDst), "demos/ideal/%s_ideal_%s.demo", aMap, aTime);
+	str_format(aDst, sizeof(aDst), "demos/ddnetty/ideal/%s_ideal_%s.demo", aMap, aTime);
 
 	CIdealDemoJob::SOptions Options;
 	Options.m_BlendTicks = g_Config.m_DtSplitsIdealDemoBlend;
@@ -1911,15 +1934,15 @@ void CSplits::UpdateIdealDemo()
 		{
 			CSplits *m_pThis;
 			std::string m_Prefix, m_Keep;
-		} Ctx{this, std::string(aMap) + "_ideal_", pJob->Destination().substr(str_length("demos/ideal/"))};
-		Storage()->ListDirectory(IStorage::TYPE_SAVE, "demos/ideal", [](const char *pName, int IsDir, int DirType, void *pUser) {
+		} Ctx{this, std::string(aMap) + "_ideal_", pJob->Destination().substr(str_length("demos/ddnetty/ideal/"))};
+		Storage()->ListDirectory(IStorage::TYPE_SAVE, "demos/ddnetty/ideal", [](const char *pName, int IsDir, int DirType, void *pUser) {
 			SCtx *pCtx = static_cast<SCtx *>(pUser);
 			if(IsDir || !str_startswith(pName, pCtx->m_Prefix.c_str()) || !str_endswith(pName, ".demo") || pCtx->m_Keep == pName)
 				return 0;
-			pCtx->m_pThis->Storage()->CreateFolder("demos/ideal/old", IStorage::TYPE_SAVE);
+			pCtx->m_pThis->Storage()->CreateFolder("demos/ddnetty/ideal/old", IStorage::TYPE_SAVE);
 			char aSrc[IO_MAX_PATH_LENGTH], aDst[IO_MAX_PATH_LENGTH];
-			str_format(aSrc, sizeof(aSrc), "demos/ideal/%s", pName);
-			str_format(aDst, sizeof(aDst), "demos/ideal/old/%s", pName);
+			str_format(aSrc, sizeof(aSrc), "demos/ddnetty/ideal/%s", pName);
+			str_format(aDst, sizeof(aDst), "demos/ddnetty/ideal/old/%s", pName);
 			pCtx->m_pThis->Storage()->RenameFile(aSrc, aDst, IStorage::TYPE_SAVE);
 			return 0; }, &Ctx);
 		str_format(m_aIdealStatus, sizeof(m_aIdealStatus), DtLocalize("Ideal run demo: %s saved"), aTime);

@@ -526,8 +526,8 @@ Save demos of the best segments
 == Salvar demos dos melhores trechos
 
 [DDNetty]
-Every new best segment is cut out of the replay recorder into demos/segments when the run ends. Has to be turned on for each map too.
-== Cada novo melhor trecho é cortado do gravador de replays para demos/segments quando a tentativa acaba. Também precisa ser ligado em cada mapa.
+Every new best segment is cut out of the replay recorder into demos/ddnetty/segments when the run ends. Has to be turned on for each map too.
+== Cada novo melhor trecho é cortado do gravador de replays para demos/ddnetty/segments quando a tentativa acaba. Também precisa ser ligado em cada mapa.
 
 [DDNetty]
 On this map
@@ -538,8 +538,8 @@ Build the ideal run demo
 == Montar a demo da run ideal
 
 [DDNetty]
-When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ideal.
-== Quando todos os trechos do percurso têm demo, eles são emendados numa demo só da sua run ideal (com o seu duo), em demos/ideal.
+When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ddnetty/ideal.
+== Quando todos os trechos do percurso têm demo, eles são emendados numa demo só da sua run ideal (com o seu duo), em demos/ddnetty/ideal.
 
 [DDNetty]
 Open folder

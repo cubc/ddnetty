@@ -348,21 +348,20 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 		g_Config.m_DtSplitsSegmentDemos ^= 1;
 		Client()->DemoRecorder_UpdateReplayRecorder();
 	}
-	GameClient()->m_Tooltips.DoToolTip(&s_SegDemosCheckbox, &Button, DtLocalize("Every new best segment is cut out of the replay recorder into demos/segments when the run ends. Has to be turned on for each map too."));
+	GameClient()->m_Tooltips.DoToolTip(&s_SegDemosCheckbox, &Button, DtLocalize("Every new best segment is cut out of the replay recorder into demos/ddnetty/segments when the run ends. Has to be turned on for each map too."));
 	Row.VSplitLeft(130.0f, &Button, &Row);
 	if(DoButton_CheckBox(&s_SegDemosMapCheckbox, DtLocalize("On this map"), Splits.SegmentDemosOnMap(), &Button))
 		Splits.SetSegmentDemosOnMap(!Splits.SegmentDemosOnMap());
 	Row.VSplitLeft(200.0f, &Button, &Row);
 	if(DoButton_CheckBox(&s_IdealDemoCheckbox, DtLocalize("Build the ideal run demo"), g_Config.m_DtSplitsIdealDemo, &Button))
 		g_Config.m_DtSplitsIdealDemo ^= 1;
-	GameClient()->m_Tooltips.DoToolTip(&s_IdealDemoCheckbox, &Button, DtLocalize("When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ideal."));
+	GameClient()->m_Tooltips.DoToolTip(&s_IdealDemoCheckbox, &Button, DtLocalize("When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ddnetty/ideal."));
 	Row.VSplitLeft(5.0f, nullptr, &Row);
 	Row.VSplitLeft(110.0f, &Button, &Row);
 	static CButtonContainer s_SegFolderButton;
 	if(DoButton_Menu(&s_SegFolderButton, DtLocalize("Open folder"), 0, &Button))
 	{
-		Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
-		Storage()->CreateFolder("demos/segments", IStorage::TYPE_SAVE);
+		Splits.CreateDemoFolders();
 		Storage()->CreateFolder(Splits.SegmentFolder(), IStorage::TYPE_SAVE);
 		char aFolder[IO_MAX_PATH_LENGTH];
 		Storage()->GetCompletePath(IStorage::TYPE_SAVE, Splits.SegmentFolder(), aFolder, sizeof(aFolder));
