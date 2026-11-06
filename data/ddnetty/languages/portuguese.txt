@@ -756,3 +756,123 @@ All attempts (focused ones in brackets: the average and the variation use those)
 [DDNetty]
 Fastest time of anyone else in this segment, from the map's reference file. Gold: yours is faster.
 == Tempo mais rápido de outro jogador neste troço, do ficheiro de referência do mapa. Dourado: o teu é mais rápido.
+
+[DDNetty]
+Ideal run over time
+== Run ideal ao longo do tempo
+
+[DDNetty]
+Needs one attempt of every segment of your route.
+== Precisa de uma tentativa de cada troço da tua rota.
+
+[DDNetty]
+%s (%s) · attempt %d · %s
+== %s (%s) · tentativa %d · %s
+
+[DDNetty]
+%s · attempt %d · %s
+== %s · tentativa %d · %s
+
+[DDNetty]
+— ideal run
+== — run ideal
+
+[DDNetty]
+Average − best: every attempt vs focused runs
+== Média − melhor: todas as tentativas × runs focadas
+
+[DDNetty]
+■ every attempt
+== ■ todas as tentativas
+
+[DDNetty]
+■ focused runs
+== ■ runs focadas
+
+[DDNetty]
+■ focused: average ± variation
+== ■ focadas: média ± variação
+
+[DDNetty]
+Consistency (variation of the last 10 passes)
+== Consistência (variação das últimas 10 passagens)
+
+[DDNetty]
+Needs a few passes of the segment above.
+== Precisa de algumas passagens do troço acima.
+
+[DDNetty]
+#%d · ±%s
+== #%d · ±%s
+
+[DDNetty]
+lower = more consistent
+== mais baixo = mais consistente
+
+[DDNetty]
+You vs the best of everyone else (map time checkpoints)
+== Tu × o melhor de todos os outros (time checkpoints do mapa)
+
+[DDNetty]
+Number ghost: your last runs vs %s
+== Ghost de números: as tuas últimas runs × %s
+
+[DDNetty]
+Reach: runs from the start that got to each point
+== Alcance: runs desde a largada que chegaram a cada ponto
+
+[DDNetty]
+Start a few runs from the start line to see this.
+== Começa algumas runs na partida para ver isto.
+
+[DDNetty]
+%s · %d runs (%d%%) · %d ended in the segment before
+== %s · %d runs (%d%%) · %d acabaram no troço anterior
+
+[DDNetty]
+%s · %d runs
+== %s · %d runs
+
+[DDNetty]
+When you beat your segments (weekday × hour)
+== Quando bates os teus troços (dia × hora)
+
+[DDNetty]
+When you play (weekday × hour)
+== Quando jogas (dia × hora)
+
+[DDNetty]
+New bests
+== Novos melhores
+
+[DDNetty]
+Sun
+== Dom
+
+[DDNetty]
+Mon
+== Seg
+
+[DDNetty]
+Tue
+== Ter
+
+[DDNetty]
+Wed
+== Qua
+
+[DDNetty]
+Thu
+== Qui
+
+[DDNetty]
+Fri
+== Sex
+
+[DDNetty]
+Sat
+== Sáb
+
+[DDNetty]
+%s %02d:00 · %d attempts · %d new bests
+== %s %02d:00 · %d tentativas · %d novos melhores
