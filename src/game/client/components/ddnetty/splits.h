@@ -24,6 +24,7 @@ class CSplits : public CComponent
 {
 public:
 	int Sizeof() const override { return sizeof(*this); }
+	void OnInit() override;
 	void OnConsoleInit() override;
 	void OnMapLoad() override;
 	void OnReset() override;
@@ -42,6 +43,7 @@ public:
 	const DdnettySplits::CSplitsRefs &Refs() const { return m_Refs; }
 	const DdnettySplits::SRefRun *RefRun() const; // the one chosen with dt_splits_ref_player
 	void LoadRefs();
+	void CreateDemoFolders(); // demos/ddnetty/segments and demos/ddnetty/ideal
 	const char *RefsPath() const { return m_aRefsPath; }
 	void DeleteRuns(const std::vector<int> &vRunIds);
 	void DeleteSegment(int From, int To);
