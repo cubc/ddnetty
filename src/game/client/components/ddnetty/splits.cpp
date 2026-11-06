@@ -1,30 +1,39 @@
 // ddnetty: split times per map, see splits.h
 #include "splits.h"
 
+#include "ideal_demo.h"
+
 #include <base/io.h>
 #include <base/log.h>
 #include <base/math.h>
+#include <base/mem.h>
 #include <base/str.h>
 #include <base/time.h>
 
+#include <engine/engine.h>
+#include <engine/ghost.h>
 #include <engine/graphics.h>
 #include <engine/keys.h>
 #include <engine/map.h>
 #include <engine/shared/config.h>
+#include <engine/shared/jobs.h>
 #include <engine/shared/linereader.h>
 #include <engine/storage.h>
 #include <engine/textrender.h>
 
 #include <generated/protocol.h>
 
+#include <game/client/components/ghost.h>
 #include <game/client/components/hud_layout.h>
 #include <game/client/gameclient.h>
 #include <game/collision.h>
+#include <game/gamecore.h>
 #include <game/localization.h>
 #include <game/mapitems.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 using namespace DdnettySplits;
 
@@ -68,6 +77,7 @@ void CSplits::OnConsoleInit()
 {
 	Console()->Register("dt_splits_edit", "", CFGFLAG_CLIENT, ConEdit, this, "Toggle the edit mode for your split checkpoints");
 	Console()->Register("dt_splits_source_cycle", "", CFGFLAG_CLIENT, ConSourceCycle, this, "Cycle the split points: map time checkpoints + yours, only map time checkpoints, only yours");
+	Console()->Register("dt_splits_build_ideal", "", CFGFLAG_CLIENT, ConBuildIdeal, this, "Build the ideal run demo from the demos of your best segments");
 	Console()->Register("dt_splits_delete_all_checkpoints", "", CFGFLAG_CLIENT, ConDeleteAllGates, this, "Delete all your checkpoints on this map, merging their times into the map's time checkpoints");
 }
 
@@ -141,6 +151,7 @@ void CSplits::Load()
 	char aSha256[SHA256_MAXSTRSIZE];
 	sha256_str(GameClient()->Map()->Sha256(), aSha256, sizeof(aSha256));
 	str_format(m_aPath, sizeof(m_aPath), "ddnetty/splits/%s_%.8s.txt", aMap, aSha256);
+	str_format(m_aSegmentFolder, sizeof(m_aSegmentFolder), "demos/segments/%s_%.8s", aMap, aSha256);
 
 	Storage()->CreateFolder("ddnetty", IStorage::TYPE_SAVE);
 	Storage()->CreateFolder("ddnetty/splits", IStorage::TYPE_SAVE);
@@ -189,6 +200,7 @@ void CSplits::Append(const SAttempt &Attempt)
 
 void CSplits::ResetRun()
 {
+	FlushClips(); // a run that ends is the moment to cut its best segments out of the replay recorder
 	m_TrackedClientId = -1;
 	m_LastProcessedTick = -1;
 	m_LastPoint = POINT_NONE;
@@ -217,6 +229,9 @@ bool CSplits::IsPractice() const
 
 void CSplits::OnNewSnapshot()
 {
+	if(m_FlushClipsAtTick >= 0 && Client()->State() == IClient::STATE_ONLINE && Client()->GameTick(g_Config.m_ClDummy) >= m_FlushClipsAtTick)
+		FlushClips();
+
 	// ddnetty fake ping lock: the ping the server shows of us is only fresh while our
 	// scoreboard or menu is open (that's when the server refreshes it for us)
 	if(g_Config.m_DtFakePing > 0 && Client()->State() == IClient::STATE_ONLINE && (GameClient()->m_Scoreboard.IsActive() || GameClient()->m_Menus.IsActive()))
@@ -419,6 +434,9 @@ void CSplits::OnPoint(int Point, double Tick)
 			const int Reference = pStats ? CSplitsData::Reference(*pStats, Opts) : -1;
 			m_HudHasDiff = Reference >= 0;
 			m_HudDiff = Reference >= 0 ? Millis - Reference : 0;
+			// a new best segment: remember it, its demo is cut when the run ends
+			if(SegmentDemosActive() && (Opts.m_CountPractice || !IsPractice()) && (!pStats || pStats->m_Best < 0 || Millis < pStats->m_Best))
+				QueueClip(m_LastUsedPoint, Point, Millis, m_LastUsedPointTick, Tick);
 			if(m_HudHasDiff)
 				m_HudDiffUntil = time_get() + 4 * time_freq();
 		}
@@ -479,6 +497,8 @@ void CSplits::OnPoint(int Point, double Tick)
 	{
 		m_LastPoint = POINT_NONE;
 		m_LastUsedPoint = POINT_NONE;
+		if(!m_vPendingClips.empty())
+			m_FlushClipsAtTick = (int)std::ceil(Tick) + Client()->GameTickSpeed(); // 1 s after the finish is in the demo too
 	}
 }
 
@@ -934,6 +954,7 @@ bool CSplits::OnInput(const IInput::CEvent &Event)
 
 void CSplits::OnRender()
 {
+	UpdateClipJobs();
 	if(Client()->State() != IClient::STATE_ONLINE || !HasMap())
 		return;
 	RenderGates();
@@ -1233,4 +1254,478 @@ void CSplits::RenderHudBox(bool Preview)
 	if(Lines.m_Unlikely)
 		DrawCentered(Y, LineFontSize, WarningMessage(), ColorRGBA(1.0f, 0.35f, 0.35f, 1.0f));
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
+}
+
+// --- segment demos ---
+
+bool CSplits::SegmentDemosActive() const
+{
+	return g_Config.m_DtSplits && g_Config.m_DtSplitsSegmentDemos && m_Data.m_SegmentDemos;
+}
+
+void CSplits::SetSegmentDemosOnMap(bool On)
+{
+	if(!HasMap() || m_Data.m_SegmentDemos == On)
+		return;
+	m_Data.m_SegmentDemos = On;
+	Save();
+	Client()->DemoRecorder_UpdateReplayRecorder(); // starts (or stops) the recorder the demos are cut from
+}
+
+int CSplits::DuoOf(int ClientId) const
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return -1;
+	const int Team = GameClient()->m_Teams.Team(ClientId);
+	if(Team <= TEAM_FLOCK || Team >= TEAM_SUPER)
+		return -1;
+	// the dummy first, then anyone else in the team
+	for(int Local : GameClient()->m_aLocalIds)
+		if(Local >= 0 && Local != ClientId && GameClient()->m_Teams.Team(Local) == Team && GameClient()->m_Snap.m_apPlayerInfos[Local])
+			return Local;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+		if(i != ClientId && GameClient()->m_Snap.m_apPlayerInfos[i] && GameClient()->m_Teams.Team(i) == Team)
+			return i;
+	return -1;
+}
+
+void CSplits::QueueClip(int From, int To, int Millis, double StartTick, double EndTick)
+{
+	// a faster try of the same segment in the same run replaces the slower one
+	for(auto It = m_vPendingClips.begin(); It != m_vPendingClips.end(); ++It)
+	{
+		if(It->m_From == From && It->m_To == To)
+		{
+			if(It->m_Millis <= Millis)
+				return;
+			m_vPendingClips.erase(It);
+			break;
+		}
+	}
+	SPendingClip Clip;
+	Clip.m_From = From;
+	Clip.m_To = To;
+	Clip.m_Millis = Millis;
+	Clip.m_StartTick = StartTick;
+	Clip.m_EndTick = EndTick;
+	Clip.m_MainId = m_TrackedClientId;
+	Clip.m_DuoId = DuoOf(m_TrackedClientId);
+	if(Clip.m_MainId >= 0)
+		Clip.m_MainName = GameClient()->m_aClients[Clip.m_MainId].m_aName;
+	if(Clip.m_DuoId >= 0)
+		Clip.m_DuoName = GameClient()->m_aClients[Clip.m_DuoId].m_aName;
+	Clip.m_Practice = IsPractice();
+	Clip.m_Timestamp = time_timestamp();
+	m_vPendingClips.push_back(Clip);
+}
+
+void CSplits::FlushClips()
+{
+	m_FlushClipsAtTick = -1;
+	if(m_vPendingClips.empty())
+		return;
+	std::vector<SPendingClip> vClips;
+	vClips.swap(m_vPendingClips);
+	if(!HasMap() || Client()->State() != IClient::STATE_ONLINE)
+		return;
+
+	Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
+	Storage()->CreateFolder("demos/segments", IStorage::TYPE_SAVE);
+	Storage()->CreateFolder(m_aSegmentFolder, IStorage::TYPE_SAVE);
+
+	const int Margin = Client()->GameTickSpeed(); // 1 s before and after the segment
+	const int Now = Client()->GameTick(g_Config.m_ClDummy);
+	char aMap[128];
+	str_copy(aMap, GameClient()->Map()->BaseName());
+	str_sanitize_filename(aMap);
+
+	std::vector<IClient::SReplaySlice> vSlices;
+	std::vector<std::string> vDemos;
+	for(const SPendingClip &Clip : vClips)
+	{
+		IClient::SReplaySlice Slice;
+		Slice.m_StartTick = (int)std::floor(Clip.m_StartTick) - Margin;
+		Slice.m_EndTick = std::min((int)std::ceil(Clip.m_EndTick) + Margin, Now);
+		char aTime[32];
+		FormatMillis(Clip.m_Millis, aTime, sizeof(aTime));
+		for(char *p = aTime; *p; p++)
+			if(*p == ':')
+				*p = '-';
+		char aTimestamp[20];
+		str_timestamp(aTimestamp, sizeof(aTimestamp));
+		str_format(Slice.m_aDst, sizeof(Slice.m_aDst), "%s/%s_%s-%s_%s_%s.demo", m_aSegmentFolder, aMap, PointToString(Clip.m_From).c_str(), PointToString(Clip.m_To).c_str(), aTime, aTimestamp);
+		vSlices.push_back(Slice);
+		vDemos.emplace_back(Slice.m_aDst);
+	}
+	std::vector<std::shared_ptr<IJob>> vJobs = Client()->DemoRecorder_SaveReplaySlices(vSlices);
+	if(vJobs.size() != vClips.size())
+	{
+		log_warn("splits", "segment demos: the replay recorder isn't recording, %d segment demos lost", (int)vClips.size());
+		return;
+	}
+	for(size_t i = 0; i < vClips.size(); i++)
+		m_vClipJobs.push_back({vJobs[i], vClips[i], vDemos[i]});
+}
+
+void CSplits::UpdateClipJobs()
+{
+	for(auto It = m_vClipJobs.begin(); It != m_vClipJobs.end();)
+	{
+		if(It->m_pJob->State() != IJob::STATE_DONE && It->m_pJob->State() != IJob::STATE_ABORTED)
+		{
+			++It;
+			continue;
+		}
+		const SClipJob Job = *It;
+		It = m_vClipJobs.erase(It);
+		if(Job.m_pJob->State() != IJob::STATE_DONE || !Storage()->FileExists(Job.m_Demo.c_str(), IStorage::TYPE_SAVE))
+		{
+			log_warn("splits", "segment demo '%s' could not be saved", Job.m_Demo.c_str());
+			continue;
+		}
+		// the info next to the demo: what it holds and which tees, for building the ideal run
+		std::string Info = Job.m_Demo.substr(0, Job.m_Demo.size() - 5) + ".txt";
+		IOHANDLE File = Storage()->OpenFile(Info.c_str(), IOFLAG_WRITE, IStorage::TYPE_SAVE);
+		if(File)
+		{
+			const SPendingClip &C = Job.m_Clip;
+			char aBuf[512];
+			str_format(aBuf, sizeof(aBuf), "ddnetty clip v1\nfrom %s\nto %s\nmillis %d\nstart %.3f\nend %.3f\nmain %d %s\nduo %d %s\npractice %d\ntime %lld\n",
+				PointToString(C.m_From).c_str(), PointToString(C.m_To).c_str(), C.m_Millis, C.m_StartTick, C.m_EndTick,
+				C.m_MainId, C.m_MainName.c_str(), C.m_DuoId, C.m_DuoName.c_str(), C.m_Practice ? 1 : 0, (long long)C.m_Timestamp);
+			io_write(File, aBuf, str_length(aBuf));
+			io_close(File);
+		}
+		log_info("splits", "saved segment demo '%s'", Job.m_Demo.c_str());
+		PruneClips(Job.m_Clip.m_From, Job.m_Clip.m_To);
+		if(m_vClipJobs.empty())
+			RequestIdealDemo();
+	}
+	UpdateIdealDemo();
+}
+
+void CSplits::PruneClips(int From, int To)
+{
+	// keep the fastest dt_splits_segment_demos_keep demos of the segment, move the rest to old/
+	struct SFound
+	{
+		std::string m_Base; // without extension
+		int m_Millis;
+	};
+	struct SCtx
+	{
+		CSplits *m_pThis;
+		std::string m_Prefix;
+		std::vector<SFound> m_vFound;
+	} Ctx;
+	Ctx.m_pThis = this;
+	char aMap[128];
+	str_copy(aMap, GameClient()->Map()->BaseName());
+	str_sanitize_filename(aMap);
+	Ctx.m_Prefix = std::string(aMap) + "_" + PointToString(From) + "-" + PointToString(To) + "_";
+	Storage()->ListDirectory(IStorage::TYPE_SAVE, m_aSegmentFolder, [](const char *pName, int IsDir, int DirType, void *pUser) {
+		SCtx *pCtx = static_cast<SCtx *>(pUser);
+		if(IsDir || !str_startswith(pName, pCtx->m_Prefix.c_str()) || !str_endswith(pName, ".txt"))
+			return 0;
+		char aPath[IO_MAX_PATH_LENGTH];
+		str_format(aPath, sizeof(aPath), "%s/%s", pCtx->m_pThis->m_aSegmentFolder, pName);
+		CLineReader Reader;
+		if(!Reader.OpenFile(pCtx->m_pThis->Storage()->OpenFile(aPath, IOFLAG_READ, IStorage::TYPE_SAVE)))
+			return 0;
+		int Millis = -1;
+		while(const char *pLine = Reader.Get())
+			if(str_startswith(pLine, "millis "))
+				Millis = str_toint(pLine + 7);
+		if(Millis >= 0)
+			pCtx->m_vFound.push_back({std::string(aPath, str_length(aPath) - 4), Millis});
+		return 0; }, &Ctx);
+	std::sort(Ctx.m_vFound.begin(), Ctx.m_vFound.end(), [](const SFound &A, const SFound &B) { return A.m_Millis < B.m_Millis; });
+	const size_t Keep = (size_t)std::max(1, g_Config.m_DtSplitsSegmentDemosKeep);
+	if(Ctx.m_vFound.size() <= Keep)
+		return;
+	char aOld[IO_MAX_PATH_LENGTH];
+	str_format(aOld, sizeof(aOld), "%s/old", m_aSegmentFolder);
+	Storage()->CreateFolder(aOld, IStorage::TYPE_SAVE);
+	for(size_t i = Keep; i < Ctx.m_vFound.size(); i++)
+	{
+		const std::string &Base = Ctx.m_vFound[i].m_Base;
+		const char *pFile = Base.c_str() + str_length(m_aSegmentFolder) + 1;
+		for(const char *pExt : {".demo", ".txt"})
+		{
+			char aSrc[IO_MAX_PATH_LENGTH], aDst[IO_MAX_PATH_LENGTH];
+			str_format(aSrc, sizeof(aSrc), "%s%s", Base.c_str(), pExt);
+			str_format(aDst, sizeof(aDst), "%s/%s%s", aOld, pFile, pExt);
+			Storage()->RenameFile(aSrc, aDst, IStorage::TYPE_SAVE);
+		}
+	}
+}
+
+// --- the ideal run demo ---
+
+void CSplits::ConBuildIdeal(IConsole::IResult *pResult, void *pUserData)
+{
+	static_cast<CSplits *>(pUserData)->RequestIdealDemo(true);
+}
+
+void CSplits::RequestIdealDemo(bool Manual)
+{
+	if(!HasMap() || (!Manual && !g_Config.m_DtSplitsIdealDemo))
+		return;
+	m_IdealManual = m_IdealManual || Manual;
+	if(m_pIdealJob)
+	{
+		m_IdealAgain = true;
+		return;
+	}
+	StartIdealDemo();
+}
+
+void CSplits::StartIdealDemo()
+{
+	const bool Manual = m_IdealManual;
+	m_IdealManual = false;
+	const SAnalysis &Current = Analysis();
+	if(!Current.m_RouteComplete || Current.m_vRoute.size() < 2)
+	{
+		str_copy(m_aIdealStatus, DtLocalize("Ideal run demo: needs one complete run first"));
+		return;
+	}
+
+	// what every segment demo of this map holds
+	struct SInfo
+	{
+		std::string m_Demo;
+		int m_From = POINT_NONE, m_To = POINT_NONE, m_Millis = -1, m_MainId = -1, m_DuoId = -1;
+		double m_Start = 0.0, m_End = 0.0;
+	};
+	struct SCtx
+	{
+		CSplits *m_pThis;
+		std::vector<SInfo> m_vInfos;
+	} Ctx{this, {}};
+	Storage()->ListDirectory(IStorage::TYPE_SAVE, m_aSegmentFolder, [](const char *pName, int IsDir, int DirType, void *pUser) {
+		SCtx *pCtx = static_cast<SCtx *>(pUser);
+		if(IsDir || !str_endswith(pName, ".txt"))
+			return 0;
+		char aPath[IO_MAX_PATH_LENGTH];
+		str_format(aPath, sizeof(aPath), "%s/%s", pCtx->m_pThis->m_aSegmentFolder, pName);
+		CLineReader Reader;
+		if(!Reader.OpenFile(pCtx->m_pThis->Storage()->OpenFile(aPath, IOFLAG_READ, IStorage::TYPE_SAVE)))
+			return 0;
+		SInfo Info;
+		Info.m_Demo = std::string(aPath, str_length(aPath) - 4) + ".demo";
+		while(const char *pLine = Reader.Get())
+		{
+			if(str_startswith(pLine, "from "))
+				Info.m_From = PointFromString(pLine + 5);
+			else if(str_startswith(pLine, "to "))
+				Info.m_To = PointFromString(pLine + 3);
+			else if(str_startswith(pLine, "millis "))
+				Info.m_Millis = str_toint(pLine + 7);
+			else if(str_startswith(pLine, "start "))
+				Info.m_Start = std::strtod(pLine + 6, nullptr);
+			else if(str_startswith(pLine, "end "))
+				Info.m_End = std::strtod(pLine + 4, nullptr);
+			else if(str_startswith(pLine, "main "))
+				Info.m_MainId = str_toint(pLine + 5);
+			else if(str_startswith(pLine, "duo "))
+				Info.m_DuoId = str_toint(pLine + 4);
+		}
+		if(Info.m_Millis >= 0 && Info.m_From != POINT_NONE && Info.m_To != POINT_NONE && Info.m_MainId >= 0 && pCtx->m_pThis->Storage()->FileExists(Info.m_Demo.c_str(), IStorage::TYPE_SAVE))
+			pCtx->m_vInfos.push_back(Info);
+		return 0; }, &Ctx);
+
+	// the fastest demo of every segment of the route
+	std::vector<CIdealDemoJob::SClip> vClips;
+	int Missing = 0;
+	for(size_t i = 0; i + 1 < Current.m_vRoute.size(); i++)
+	{
+		const SInfo *pBest = nullptr;
+		for(const SInfo &Info : Ctx.m_vInfos)
+			if(Info.m_From == Current.m_vRoute[i] && Info.m_To == Current.m_vRoute[i + 1] && (!pBest || Info.m_Millis < pBest->m_Millis))
+				pBest = &Info;
+		if(!pBest)
+		{
+			Missing++;
+			continue;
+		}
+		CIdealDemoJob::SClip Clip;
+		Clip.m_Demo = pBest->m_Demo;
+		Clip.m_Millis = pBest->m_Millis;
+		Clip.m_StartTick = pBest->m_Start;
+		Clip.m_EndTick = pBest->m_End;
+		Clip.m_MainId = pBest->m_MainId;
+		Clip.m_DuoId = pBest->m_DuoId;
+		vClips.push_back(Clip);
+	}
+	if(Missing > 0)
+	{
+		str_format(m_aIdealStatus, sizeof(m_aIdealStatus), DtLocalize("Ideal run demo: %d of %d segments still without a demo"), Missing, (int)Current.m_vRoute.size() - 1);
+		if(Manual)
+		{
+			m_Notice = m_aIdealStatus;
+			m_NoticeUntil = time_get() + 3 * time_freq();
+		}
+		return;
+	}
+	// a team mate in some segments but not in others: leave it out rather than show it half the time
+	const bool AllDuo = std::all_of(vClips.begin(), vClips.end(), [](const CIdealDemoJob::SClip &C) { return C.m_DuoId >= 0; });
+	if(!AllDuo)
+		for(CIdealDemoJob::SClip &Clip : vClips)
+			Clip.m_DuoId = -1;
+
+	int Total = 0;
+	for(const CIdealDemoJob::SClip &Clip : vClips)
+		Total += Clip.m_Millis;
+	char aMap[128];
+	str_copy(aMap, GameClient()->Map()->BaseName());
+	str_sanitize_filename(aMap);
+	char aTime[32];
+	FormatMillis(Total, aTime, sizeof(aTime));
+	for(char *p = aTime; *p; p++)
+		if(*p == ':')
+			*p = '-';
+	Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
+	Storage()->CreateFolder("demos/ideal", IStorage::TYPE_SAVE);
+	char aDst[IO_MAX_PATH_LENGTH];
+	str_format(aDst, sizeof(aDst), "demos/ideal/%s_ideal_%s.demo", aMap, aTime);
+
+	CIdealDemoJob::SOptions Options;
+	Options.m_BlendTicks = g_Config.m_DtSplitsIdealDemoBlend;
+	Options.m_KeepShots = g_Config.m_DtSplitsIdealDemoShots != 0;
+	m_pIdealJob = std::make_shared<CIdealDemoJob>(Client(), vClips, aDst, Options);
+	Engine()->AddJob(m_pIdealJob);
+	str_copy(m_aIdealStatus, DtLocalize("Ideal run demo: building..."));
+}
+
+void CSplits::SaveIdealGhost()
+{
+	// the ghost recorder is shared with your own ghost: wait while it records a run
+	IGhostRecorder *pRecorder = GameClient()->m_Ghost.GhostRecorder();
+	if(!m_pGhostPending || !HasMap() || pRecorder->IsRecording())
+		return;
+	std::shared_ptr<CIdealDemoJob> pJob = m_pGhostPending;
+	m_pGhostPending = nullptr;
+
+	const char *pMap = GameClient()->Map()->BaseName();
+	char aSha256[SHA256_MAXSTRSIZE];
+	sha256_str(GameClient()->Map()->Sha256(), aSha256, sizeof(aSha256));
+	const char *pOwner = "ideal run";
+
+	// the newest ideal ghost replaces the older ones of the map
+	const char *pGhostDir = GameClient()->m_Ghost.GetGhostDir();
+	struct SCtx
+	{
+		CSplits *m_pThis;
+		std::string m_Prefix;
+		const char *m_pDir;
+	} Ctx{this, std::string(pMap) + "_ideal_run_", pGhostDir};
+	Storage()->ListDirectory(IStorage::TYPE_SAVE, pGhostDir, [](const char *pName, int IsDir, int DirType, void *pUser) {
+		SCtx *pCtx = static_cast<SCtx *>(pUser);
+		if(!IsDir && str_startswith(pName, pCtx->m_Prefix.c_str()) && str_endswith(pName, ".gho"))
+		{
+			char aPath[IO_MAX_PATH_LENGTH];
+			str_format(aPath, sizeof(aPath), "%s/%s", pCtx->m_pDir, pName);
+			pCtx->m_pThis->Storage()->RemoveFile(aPath, IStorage::TYPE_SAVE);
+		}
+		return 0; }, &Ctx);
+
+	char aTimestamp[32];
+	str_timestamp_format(aTimestamp, sizeof(aTimestamp), TimestampFormat::NOSPACE);
+	const int Time = pJob->TotalMillis();
+	char aPath[IO_MAX_PATH_LENGTH];
+	str_format(aPath, sizeof(aPath), "%s/%s_ideal_run_%d.%03d_%s_%s.gho", pGhostDir, pMap, Time / 1000, Time % 1000, aTimestamp, aSha256);
+	Storage()->CreateFolder(pGhostDir, IStorage::TYPE_SAVE);
+	if(pRecorder->Start(aPath, pMap, GameClient()->Map()->Sha256(), pOwner) != 0)
+	{
+		log_warn("splits", "could not write the ideal run ghost '%s'", aPath);
+		return;
+	}
+	const int StartTick = pJob->GhostStartTick();
+	pRecorder->WriteData(GHOSTDATA_TYPE_START_TICK, &StartTick, sizeof(int));
+	CGhostSkin Skin;
+	StrToInts(Skin.m_aSkin, std::size(Skin.m_aSkin), "default");
+	Skin.m_UseCustomColor = 0;
+	Skin.m_ColorBody = 0;
+	Skin.m_ColorFeet = 0;
+	if(pJob->GhostSkin().size() == 9)
+	{
+		mem_copy(Skin.m_aSkin, pJob->GhostSkin().data(), sizeof(Skin.m_aSkin));
+		Skin.m_UseCustomColor = pJob->GhostSkin()[6];
+		Skin.m_ColorBody = pJob->GhostSkin()[7];
+		Skin.m_ColorFeet = pJob->GhostSkin()[8];
+	}
+	pRecorder->WriteData(GHOSTDATA_TYPE_SKIN, &Skin, sizeof(CGhostSkin));
+	for(const CIdealDemoJob::SGhostTick &Tick : pJob->Ghost())
+	{
+		CGhostCharacter Char;
+		Char.m_X = Tick.m_X;
+		Char.m_Y = Tick.m_Y;
+		Char.m_VelX = Tick.m_VelX;
+		Char.m_VelY = Tick.m_VelY;
+		Char.m_Angle = Tick.m_Angle;
+		Char.m_Direction = Tick.m_Direction;
+		Char.m_Weapon = Tick.m_Weapon;
+		Char.m_HookState = Tick.m_HookState;
+		Char.m_HookX = Tick.m_HookX;
+		Char.m_HookY = Tick.m_HookY;
+		Char.m_AttackTick = Tick.m_AttackTick;
+		Char.m_Tick = Tick.m_Tick;
+		pRecorder->WriteData(GHOSTDATA_TYPE_CHARACTER, &Char, sizeof(CGhostCharacter));
+	}
+	pRecorder->Stop((int)pJob->Ghost().size(), Time);
+	log_info("splits", "ideal run ghost saved to '%s'", aPath);
+}
+
+void CSplits::UpdateIdealDemo()
+{
+	if(m_pGhostPending)
+		SaveIdealGhost();
+	if(!m_pIdealJob || (m_pIdealJob->State() != IJob::STATE_DONE && m_pIdealJob->State() != IJob::STATE_ABORTED))
+		return;
+	std::shared_ptr<CIdealDemoJob> pJob = m_pIdealJob;
+	m_pIdealJob = nullptr;
+	char aTime[32];
+	FormatMillis(pJob->TotalMillis(), aTime, sizeof(aTime));
+	if(pJob->State() == IJob::STATE_DONE && pJob->Success())
+	{
+		// keep only the newest ideal demo of the map, older ones go to old/
+		char aMap[128];
+		str_copy(aMap, GameClient()->Map()->BaseName());
+		str_sanitize_filename(aMap);
+		struct SCtx
+		{
+			CSplits *m_pThis;
+			std::string m_Prefix, m_Keep;
+		} Ctx{this, std::string(aMap) + "_ideal_", pJob->Destination().substr(str_length("demos/ideal/"))};
+		Storage()->ListDirectory(IStorage::TYPE_SAVE, "demos/ideal", [](const char *pName, int IsDir, int DirType, void *pUser) {
+			SCtx *pCtx = static_cast<SCtx *>(pUser);
+			if(IsDir || !str_startswith(pName, pCtx->m_Prefix.c_str()) || !str_endswith(pName, ".demo") || pCtx->m_Keep == pName)
+				return 0;
+			pCtx->m_pThis->Storage()->CreateFolder("demos/ideal/old", IStorage::TYPE_SAVE);
+			char aSrc[IO_MAX_PATH_LENGTH], aDst[IO_MAX_PATH_LENGTH];
+			str_format(aSrc, sizeof(aSrc), "demos/ideal/%s", pName);
+			str_format(aDst, sizeof(aDst), "demos/ideal/old/%s", pName);
+			pCtx->m_pThis->Storage()->RenameFile(aSrc, aDst, IStorage::TYPE_SAVE);
+			return 0; }, &Ctx);
+		str_format(m_aIdealStatus, sizeof(m_aIdealStatus), DtLocalize("Ideal run demo: %s saved"), aTime);
+		log_info("splits", "ideal run demo saved to '%s'", pJob->Destination().c_str());
+		m_Notice = m_aIdealStatus;
+		m_NoticeUntil = time_get() + 3 * time_freq();
+		if(g_Config.m_DtSplitsIdealGhost && !pJob->Ghost().empty())
+		{
+			m_pGhostPending = pJob;
+			SaveIdealGhost();
+		}
+	}
+	else
+	{
+		str_format(m_aIdealStatus, sizeof(m_aIdealStatus), DtLocalize("Ideal run demo failed: %s"), pJob->Error().c_str());
+		log_warn("splits", "%s", m_aIdealStatus);
+	}
+	if(m_IdealAgain)
+	{
+		m_IdealAgain = false;
+		StartIdealDemo();
+	}
 }

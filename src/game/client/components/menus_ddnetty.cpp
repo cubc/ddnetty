@@ -269,6 +269,58 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 	if(DoButton_CheckBox(&s_GatesCheckbox, DtLocalize("Show my checkpoints on the map"), g_Config.m_DtSplitsShowGates, &Button))
 		g_Config.m_DtSplitsShowGates ^= 1;
 
+	// demos of the best segments (and the ideal run built from them)
+	MainView.HSplitTop(Spacing, nullptr, &MainView);
+	MainView.HSplitTop(LineSize, &Row, &MainView);
+	static int s_SegDemosCheckbox, s_SegDemosMapCheckbox, s_IdealDemoCheckbox;
+	Row.VSplitLeft(260.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_SegDemosCheckbox, DtLocalize("Save demos of the best segments"), g_Config.m_DtSplitsSegmentDemos, &Button))
+	{
+		g_Config.m_DtSplitsSegmentDemos ^= 1;
+		Client()->DemoRecorder_UpdateReplayRecorder();
+	}
+	GameClient()->m_Tooltips.DoToolTip(&s_SegDemosCheckbox, &Button, DtLocalize("Every new best segment is cut out of the replay recorder into demos/segments when the run ends. Has to be turned on for each map too."));
+	Row.VSplitLeft(130.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_SegDemosMapCheckbox, DtLocalize("On this map"), Splits.SegmentDemosOnMap(), &Button))
+		Splits.SetSegmentDemosOnMap(!Splits.SegmentDemosOnMap());
+	Row.VSplitLeft(200.0f, &Button, &Row);
+	if(DoButton_CheckBox(&s_IdealDemoCheckbox, DtLocalize("Build the ideal run demo"), g_Config.m_DtSplitsIdealDemo, &Button))
+		g_Config.m_DtSplitsIdealDemo ^= 1;
+	GameClient()->m_Tooltips.DoToolTip(&s_IdealDemoCheckbox, &Button, DtLocalize("When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ideal."));
+	Row.VSplitLeft(5.0f, nullptr, &Row);
+	Row.VSplitLeft(110.0f, &Button, &Row);
+	static CButtonContainer s_SegFolderButton;
+	if(DoButton_Menu(&s_SegFolderButton, DtLocalize("Open folder"), 0, &Button))
+	{
+		Storage()->CreateFolder("demos", IStorage::TYPE_SAVE);
+		Storage()->CreateFolder("demos/segments", IStorage::TYPE_SAVE);
+		Storage()->CreateFolder(Splits.SegmentFolder(), IStorage::TYPE_SAVE);
+		char aFolder[IO_MAX_PATH_LENGTH];
+		Storage()->GetCompletePath(IStorage::TYPE_SAVE, Splits.SegmentFolder(), aFolder, sizeof(aFolder));
+		Client()->ViewFile(aFolder);
+	}
+	Row.VSplitLeft(5.0f, nullptr, &Row);
+	Row.VSplitLeft(110.0f, &Button, &Row);
+	static CButtonContainer s_BuildIdealButton;
+	if(DoButton_Menu(&s_BuildIdealButton, DtLocalize("Build now"), Splits.IdealDemoBuilding(), &Button))
+		Splits.RequestIdealDemo(true);
+	if(Splits.IdealDemoStatus()[0] != '\0' && Splits.PendingSegmentDemos() == 0)
+	{
+		Row.VSplitLeft(8.0f, nullptr, &Row);
+		SLabelProperties StatusProps;
+		StatusProps.SetColor(ColorRGBA(1.0f, 1.0f, 1.0f, 0.7f));
+		StatusProps.m_MaxWidth = Row.w;
+		StatusProps.m_EllipsisAtEnd = true;
+		Ui()->DoLabel(&Row, Splits.IdealDemoStatus(), 12.0f, TEXTALIGN_ML, StatusProps);
+	}
+	if(Splits.PendingSegmentDemos() > 0)
+	{
+		char aPending[64];
+		str_format(aPending, sizeof(aPending), DtLocalize("%d segment demos waiting"), Splits.PendingSegmentDemos());
+		Row.VSplitLeft(8.0f, nullptr, &Row);
+		Ui()->DoLabel(&Row, aPending, 12.0f, TEXTALIGN_ML);
+	}
+
 	// target time for the prediction
 	MainView.HSplitTop(Spacing, nullptr, &MainView);
 	MainView.HSplitTop(LineSize, &Row, &MainView);

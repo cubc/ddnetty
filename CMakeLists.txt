@@ -3112,6 +3112,8 @@ if(CLIENT)
     components/countryflags.h
     components/damageind.cpp
     components/damageind.h
+    components/ddnetty/ideal_demo.cpp
+    components/ddnetty/ideal_demo.h
     components/ddnetty/splits.cpp
     components/ddnetty/splits.h
     components/debughud.cpp

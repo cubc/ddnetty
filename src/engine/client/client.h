@@ -567,6 +567,9 @@ public:
 	void DemoSliceBegin() override;
 	void DemoSliceEnd() override;
 	bool DemoSlice(const char *pDstPath, CLIENTFUNC_FILTER pfnFilter, void *pUser, CLIENTFUNC_SNAPSHOT pfnSnapshot = nullptr, void *pSnapshotUser = nullptr) override;
+	std::vector<std::shared_ptr<IJob>> DemoRecorder_SaveReplaySlices(const std::vector<SReplaySlice> &vSlices) override;
+	bool DemoReadSnapshots(const char *pPath, std::vector<SDemoSnapshot> &vOut) override;
+	bool DemoWriteSnapshots(const char *pDst, const char *pMapFromDemo, const std::vector<SDemoSnapshot> &vSnapshots) override;
 	virtual void SaveReplay(int Length, const char *pFilename = "");
 
 	bool EditorHasUnsavedData() const override { return m_pEditor->HasUnsavedData(); }

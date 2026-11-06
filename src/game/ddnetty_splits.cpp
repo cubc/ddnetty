@@ -135,6 +135,7 @@ namespace DdnettySplits
 		m_vGates.clear();
 		m_vAttempts.clear();
 		m_TargetMillis = -1;
+		m_SegmentDemos = false;
 	}
 
 	bool CSplitsData::ParseLine(const char *pLine)
@@ -152,6 +153,15 @@ namespace DdnettySplits
 			if(!NextToken(pStr, Token) || !ParseInt(Token, Millis) || Millis < -1 || Millis > 24LL * 60 * 60 * 1000)
 				return false;
 			m_TargetMillis = Millis > 0 ? (int)Millis : -1;
+			return true;
+		}
+		if(Kind == "segdemos")
+		{
+			std::string Token;
+			long long Value;
+			if(!NextToken(pStr, Token) || !ParseInt(Token, Value) || (Value != 0 && Value != 1))
+				return false;
+			m_SegmentDemos = Value == 1;
 			return true;
 		}
 		if(Kind == "gate")
@@ -230,6 +240,8 @@ namespace DdnettySplits
 		std::string Result = "# ddnetty splits v1\n";
 		if(m_TargetMillis > 0)
 			Result += "target " + std::to_string(m_TargetMillis) + "\n";
+		if(m_SegmentDemos)
+			Result += "segdemos 1\n";
 		for(const SGate &Gate : m_vGates)
 			Result += FormatGate(Gate) + "\n";
 		for(const SAttempt &Attempt : m_vAttempts)

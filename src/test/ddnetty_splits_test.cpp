@@ -349,3 +349,27 @@ TEST(DdnettySplits, ChartData)
 	EXPECT_EQ(Summary.m_TotalMillis, 76000);
 	EXPECT_EQ(Summary.m_WorstFrom, 0); // T0 -> F has 3 attempts
 }
+
+TEST(DdnettySplits, SegmentDemosFlag)
+{
+	CSplitsData Data;
+	EXPECT_FALSE(Data.m_SegmentDemos);
+	EXPECT_TRUE(Data.ParseLine("segdemos 1"));
+	EXPECT_TRUE(Data.m_SegmentDemos);
+	EXPECT_NE(Data.Serialize().find("segdemos 1\n"), std::string::npos);
+
+	CSplitsData Copy;
+	for(const char *pLine : {"# ddnetty splits v1", "segdemos 1"})
+		EXPECT_TRUE(Copy.ParseLine(pLine));
+	EXPECT_TRUE(Copy.m_SegmentDemos);
+
+	EXPECT_TRUE(Data.ParseLine("segdemos 0"));
+	EXPECT_FALSE(Data.m_SegmentDemos);
+	EXPECT_EQ(Data.Serialize().find("segdemos"), std::string::npos);
+	EXPECT_FALSE(Data.ParseLine("segdemos 2"));
+	EXPECT_FALSE(Data.ParseLine("segdemos"));
+
+	Data.ParseLine("segdemos 1");
+	Data.Clear();
+	EXPECT_FALSE(Data.m_SegmentDemos);
+}

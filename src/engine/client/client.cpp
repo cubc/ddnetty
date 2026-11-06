@@ -4497,6 +4497,95 @@ bool CClient::DemoSlice(const char *pDstPath, CLIENTFUNC_FILTER pfnFilter, void 
 	return false;
 }
 
+// ddnetty
+std::vector<std::shared_ptr<IJob>> CClient::DemoRecorder_SaveReplaySlices(const std::vector<SReplaySlice> &vSlices)
+{
+	std::vector<std::shared_ptr<IJob>> vJobs;
+	if(vSlices.empty() || !DemoRecorder(RECORDER_REPLAYS)->IsRecording() || DemoRecorder(RECORDER_REPLAYS)->Length() < 1)
+		return vJobs;
+
+	// stop once so the file is complete, cut every piece out of it, then start a new file
+	DemoRecorder(RECORDER_REPLAYS)->Stop(IDemoRecorder::EStopMode::KEEP_FILE);
+	const char *pSrc = DemoRecorder(RECORDER_REPLAYS)->CurrentFilename();
+	for(const SReplaySlice &Slice : vSlices)
+	{
+		std::shared_ptr<CDemoEdit> pJob = std::make_shared<CDemoEdit>(GameClient()->NetVersion(), &m_SnapshotDelta, &m_SnapshotDeltaSixup, m_pStorage, pSrc, Slice.m_aDst, Slice.m_StartTick, Slice.m_EndTick);
+		Engine()->AddJob(pJob);
+		vJobs.push_back(pJob);
+	}
+	DemoRecorder_UpdateReplayRecorder();
+	return vJobs;
+}
+
+namespace
+{
+	class CDemoSnapshotCollector : public CDemoPlayer::IListener
+	{
+	public:
+		CDemoPlayer *m_pPlayer = nullptr;
+		std::vector<IClient::SDemoSnapshot> *m_pOut = nullptr;
+		void OnDemoPlayerSnapshot(void *pData, int Size) override
+		{
+			if(Size <= 0)
+				return;
+			IClient::SDemoSnapshot Snapshot;
+			Snapshot.m_Tick = m_pPlayer->Info()->m_Info.m_CurrentTick;
+			Snapshot.m_vData.assign((const unsigned char *)pData, (const unsigned char *)pData + Size);
+			m_pOut->push_back(std::move(Snapshot));
+		}
+		void OnDemoPlayerMessage(void *pData, int Size) override {}
+	};
+} // namespace
+
+bool CClient::DemoReadSnapshots(const char *pPath, std::vector<SDemoSnapshot> &vOut)
+{
+	CDemoPlayer DemoPlayer(&m_SnapshotDelta, &m_SnapshotDeltaSixup, false);
+	if(DemoPlayer.Load(m_pStorage, m_pConsole, pPath, IStorage::TYPE_ALL_OR_ABSOLUTE) == -1)
+		return false;
+	CDemoSnapshotCollector Collector;
+	Collector.m_pPlayer = &DemoPlayer;
+	Collector.m_pOut = &vOut;
+	DemoPlayer.SetListener(&Collector);
+	DemoPlayer.Play();
+	while(DemoPlayer.IsPlaying())
+	{
+		DemoPlayer.Update(false);
+		if(DemoPlayer.Info()->m_Info.m_Paused)
+			break;
+	}
+	const bool Success = DemoPlayer.ErrorMessage()[0] == '\0';
+	DemoPlayer.Stop();
+	return Success;
+}
+
+bool CClient::DemoWriteSnapshots(const char *pDst, const char *pMapFromDemo, const std::vector<SDemoSnapshot> &vSnapshots)
+{
+	CDemoPlayer DemoPlayer(&m_SnapshotDelta, &m_SnapshotDeltaSixup, false);
+	if(DemoPlayer.Load(m_pStorage, m_pConsole, pMapFromDemo, IStorage::TYPE_ALL_OR_ABSOLUTE) == -1)
+		return false;
+	const CMapInfo *pMapInfo = DemoPlayer.GetMapInfo();
+	const CDemoPlayer::CPlaybackInfo *pInfo = DemoPlayer.Info();
+	std::optional<SHA256_DIGEST> Sha256 = pMapInfo->m_Sha256;
+	if(!Sha256.has_value() && DemoPlayer.ExtractMap(m_pStorage))
+		Sha256 = pMapInfo->m_Sha256;
+	if(!Sha256.has_value())
+	{
+		DemoPlayer.Stop();
+		return false;
+	}
+	CDemoRecorder Recorder(&m_SnapshotDelta);
+	unsigned char *pMapData = DemoPlayer.GetMapData(m_pStorage);
+	const int Result = Recorder.Start(m_pStorage, m_pConsole, pDst, pInfo->m_Header.m_aNetversion, pMapInfo->m_aName, Sha256.value(), pMapInfo->m_Crc, pInfo->m_Header.m_aType, pMapInfo->m_Size, pMapData, nullptr, nullptr, nullptr);
+	free(pMapData);
+	DemoPlayer.Stop();
+	if(Result == -1)
+		return false;
+	for(const SDemoSnapshot &Snapshot : vSnapshots)
+		Recorder.RecordSnapshot(Snapshot.m_Tick, Snapshot.m_vData.data(), (int)Snapshot.m_vData.size());
+	Recorder.Stop(IDemoRecorder::EStopMode::KEEP_FILE);
+	return true;
+}
+
 const char *CClient::DemoPlayer_Play(const char *pFilename, int StorageType)
 {
 	// Don't disconnect unless the file exists (only for play command)
@@ -4675,12 +4764,13 @@ void CClient::DemoRecorder_HandleAutoStart()
 
 void CClient::DemoRecorder_UpdateReplayRecorder()
 {
-	if(!g_Config.m_ClReplays && DemoRecorder(RECORDER_REPLAYS)->IsRecording())
+	const bool WantReplays = g_Config.m_ClReplays || (GameClient() && GameClient()->WantReplayRecorder()); // ddnetty
+	if(!WantReplays && DemoRecorder(RECORDER_REPLAYS)->IsRecording())
 	{
 		DemoRecorder(RECORDER_REPLAYS)->Stop(IDemoRecorder::EStopMode::REMOVE_FILE);
 	}
 
-	if(g_Config.m_ClReplays && !DemoRecorder(RECORDER_REPLAYS)->IsRecording())
+	if(WantReplays && !DemoRecorder(RECORDER_REPLAYS)->IsRecording())
 	{
 		char aFilename[IO_MAX_PATH_LENGTH];
 		str_format(aFilename, sizeof(aFilename), "replays/replay_tmp_%s", GameClient()->Map()->BaseName());
