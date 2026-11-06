@@ -40,6 +40,8 @@ void CBroadcast::OnRender()
 
 void CBroadcast::RenderServerBroadcast()
 {
+	if(GameClient()->m_Focus.Hides(CFocus::ITEM_BROADCAST)) // ddnetty: focus mode
+		return;
 	if(GameClient()->m_Scoreboard.IsActive() ||
 		GameClient()->m_Motd.IsActive() ||
 		GameClient()->m_ImportantAlert.IsActive() ||

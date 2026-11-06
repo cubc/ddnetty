@@ -628,3 +628,95 @@ New best message
 [DDNetty]
 Sound
 == Som
+
+[DDNetty]
+Focus ON
+== Focus ON
+
+[DDNetty]
+Focus OFF
+== Focus OFF
+
+[DDNetty]
+Focus mode
+== Modo focus
+
+[DDNetty]
+Enable focus mode
+== Ativar modo focus
+
+[DDNetty]
+dt_focus toggles it, +dt_focus keeps it on only while the key is held.
+== dt_focus alterna, +dt_focus deixa ligado só enquanto a tecla está apertada.
+
+[DDNetty]
+Toggle key
+== Tecla
+
+[DDNetty]
+Only the game
+== Só o jogo
+
+[DDNetty]
+Ticks everything: only the map and your tee are left.
+== Marca tudo: sobram só o mapa e o seu tee.
+
+[DDNetty]
+Light
+== Leve
+
+[DDNetty]
+Only chat, names and effects.
+== Só chat, nomes e efeitos.
+
+[DDNetty]
+Other players
+== Outros jogadores
+
+[DDNetty]
+Their tees, hooks, shots and names. Your team, your dummy, the ghost and whoever hooked with you in the last 30 s stay.
+== Os tees, hooks, tiros e nomes deles. O seu time, o seu dummy, o ghost e quem fez hook com você nos últimos 30 s continuam.
+
+[DDNetty]
+Chat
+== Chat
+
+[DDNetty]
+Names
+== Nomes
+
+[DDNetty]
+Effects
+== Efeitos
+
+[DDNetty]
+HUD
+== HUD
+
+[DDNetty]
+Scoreboard
+== Placar
+
+[DDNetty]
+Kill feed and popups
+== Kill feed e popups
+
+[DDNetty]
+Music player
+== Music player
+
+[DDNetty]
+Splits box
+== Caixa de splits
+
+[DDNetty]
+Broadcast and votes
+== Broadcast e votos
+
+[DDNetty]
+DDNetty messages
+== Avisos do DDNetty
+
+[DDNetty]
+Show "Focus ON/OFF" when toggling
+== Mostrar "Focus ON/OFF" ao alternar

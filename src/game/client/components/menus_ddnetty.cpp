@@ -169,6 +169,75 @@ void CMenus::RenderDDNettyGeneral(CUIRect MainView)
 	PathProps.m_MaxWidth = Label.w;
 	PathProps.m_EllipsisAtEnd = true;
 	Ui()->DoLabel(&Label, aDumpsPath, 12.0f, TEXTALIGN_ML, PathProps);
+
+	// --- Focus mode ---
+	Right.HSplitTop(Spacing * 3.0f, nullptr, &Right);
+	Right.HSplitTop(HeadlineSize + 5.0f, &Label, &Right);
+	Ui()->DoLabel(&Label, DtLocalize("Focus mode"), HeadlineSize, TEXTALIGN_ML);
+	Right.HSplitTop(Spacing, nullptr, &Right);
+
+	Right.HSplitTop(LineSize, &Button, &Right);
+	static int s_FocusCheckbox = 0;
+	if(DoButton_CheckBox(&s_FocusCheckbox, DtLocalize("Enable focus mode"), GameClient()->m_Focus.Active(), &Button))
+		GameClient()->m_Focus.SetActive(!GameClient()->m_Focus.Active());
+	GameClient()->m_Tooltips.DoToolTip(&s_FocusCheckbox, &Button, DtLocalize("dt_focus toggles it, +dt_focus keeps it on only while the key is held."));
+	Right.HSplitTop(Spacing, nullptr, &Right);
+	static CButtonContainer s_FocusReader, s_FocusClear;
+	DoLine_KeyReader(Right, s_FocusReader, s_FocusClear, DtLocalize("Toggle key"), "dt_focus");
+
+	Right.HSplitTop(LineSize, &Button, &Right);
+	CUIRect PresetA, PresetB;
+	Button.VSplitMid(&PresetA, &PresetB, 5.0f);
+	static CButtonContainer s_PresetGameButton, s_PresetLightButton;
+	if(DoButton_Menu(&s_PresetGameButton, DtLocalize("Only the game"), 0, &PresetA))
+		CFocus::ApplyPreset(CFocus::PRESET_ONLY_GAME);
+	GameClient()->m_Tooltips.DoToolTip(&s_PresetGameButton, &PresetA, DtLocalize("Ticks everything: only the map and your tee are left."));
+	if(DoButton_Menu(&s_PresetLightButton, DtLocalize("Light"), 0, &PresetB))
+		CFocus::ApplyPreset(CFocus::PRESET_LIGHT);
+	GameClient()->m_Tooltips.DoToolTip(&s_PresetLightButton, &PresetB, DtLocalize("Only chat, names and effects."));
+
+	Right.HSplitTop(Spacing, nullptr, &Right);
+	struct SFocusOption
+	{
+		CFocus::EItem m_Item;
+		const char *m_pName;
+	};
+	const SFocusOption aFocusOptions[] = {
+		{CFocus::ITEM_OTHERS, DtLocalize("Other players")},
+		{CFocus::ITEM_CHAT, DtLocalize("Chat")},
+		{CFocus::ITEM_NAMES, DtLocalize("Names")},
+		{CFocus::ITEM_EFFECTS, DtLocalize("Effects")},
+		{CFocus::ITEM_HUD, DtLocalize("HUD")},
+		{CFocus::ITEM_SCOREBOARD, DtLocalize("Scoreboard")},
+		{CFocus::ITEM_UI, DtLocalize("Kill feed and popups")},
+		{CFocus::ITEM_MUSIC, DtLocalize("Music player")},
+		{CFocus::ITEM_SPLITS, DtLocalize("Splits box")},
+		{CFocus::ITEM_GATES, DtLocalize("My checkpoints")},
+		{CFocus::ITEM_BROADCAST, DtLocalize("Broadcast and votes")},
+		{CFocus::ITEM_NOTICES, DtLocalize("DDNetty messages")},
+	};
+	static int s_aFocusCheckboxes[std::size(aFocusOptions)];
+	const size_t NumColumns = 3;
+	for(size_t i = 0; i < std::size(aFocusOptions); i += NumColumns)
+	{
+		CUIRect Line, Col;
+		Right.HSplitTop(LineSize, &Line, &Right);
+		const float ColumnWidth = Line.w / NumColumns;
+		for(size_t j = i; j < std::min(i + NumColumns, std::size(aFocusOptions)); j++)
+		{
+			Line.VSplitLeft(ColumnWidth, &Col, &Line);
+			int *pValue = CFocus::ItemConfig(aFocusOptions[j].m_Item);
+			if(DoButton_CheckBox(&s_aFocusCheckboxes[j], aFocusOptions[j].m_pName, *pValue, &Col))
+				*pValue ^= 1;
+			if(aFocusOptions[j].m_Item == CFocus::ITEM_OTHERS)
+				GameClient()->m_Tooltips.DoToolTip(&s_aFocusCheckboxes[j], &Col, DtLocalize("Their tees, hooks, shots and names. Your team, your dummy, the ghost and whoever hooked with you in the last 30 s stay."));
+		}
+	}
+	Right.HSplitTop(Spacing, nullptr, &Right);
+	Right.HSplitTop(LineSize, &Button, &Right);
+	static int s_FocusNoticeCheckbox = 0;
+	if(DoButton_CheckBox(&s_FocusNoticeCheckbox, DtLocalize("Show \"Focus ON/OFF\" when toggling"), g_Config.m_DtFocusNotice, &Button))
+		g_Config.m_DtFocusNotice ^= 1;
 }
 
 // --- Splits ---

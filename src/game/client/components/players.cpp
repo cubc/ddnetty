@@ -1378,7 +1378,7 @@ void CPlayers::OnRender()
 	const int LocalClientId = GameClient()->m_Snap.m_LocalClientId;
 	for(int ClientId = 0; ClientId < MAX_CLIENTS; ClientId++)
 	{
-		if(ClientId == LocalClientId || !IsPlayerInfoAvailable(ClientId))
+		if(ClientId == LocalClientId || !IsPlayerInfoAvailable(ClientId) || GameClient()->m_Focus.HidesTee(ClientId)) // ddnetty: focus mode
 		{
 			continue;
 		}
@@ -1399,6 +1399,8 @@ void CPlayers::OnRender()
 		}
 
 		const int ClientId = Client.ClientId();
+		if(GameClient()->m_Focus.HidesTee(ClientId)) // ddnetty: focus mode
+			continue;
 		float Alpha = (GameClient()->IsOtherTeam(ClientId) || ClientId < 0) ? g_Config.m_ClShowOthersAlpha / 100.f : 1.f;
 		if(ClientId == -2) // ghost
 		{
@@ -1418,7 +1420,7 @@ void CPlayers::OnRender()
 
 	for(int ClientId = 0; ClientId < MAX_CLIENTS; ClientId++)
 	{
-		if(ClientId == RenderLastId || !IsPlayerInfoAvailable(ClientId))
+		if(ClientId == RenderLastId || !IsPlayerInfoAvailable(ClientId) || GameClient()->m_Focus.HidesTee(ClientId)) // ddnetty: focus mode
 		{
 			continue;
 		}

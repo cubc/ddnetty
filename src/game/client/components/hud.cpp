@@ -2417,7 +2417,8 @@ void CHud::OnRender()
 			RenderNotifyLast();
 			if(!(FocusModeActive && HideUIInFocusMode))
 				RenderLocalTime();
-			GameClient()->m_Voting.Render();
+			if(!GameClient()->m_Focus.Hides(CFocus::ITEM_BROADCAST)) // ddnetty: focus mode
+				GameClient()->m_Voting.Render();
 		}
 		// bestclient
 		CornerIndicator::Render(GameClient());

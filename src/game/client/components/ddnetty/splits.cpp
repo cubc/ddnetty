@@ -1049,8 +1049,10 @@ void CSplits::OnRender()
 	UpdateClipJobs();
 	if(Client()->State() != IClient::STATE_ONLINE || !HasMap())
 		return;
-	RenderGates();
-	if(!GameClient()->m_HudEditor.IsActive())
+	// ddnetty focus mode: the edit mode always shows the checkpoints
+	if(m_EditMode || !GameClient()->m_Focus.Hides(CFocus::ITEM_GATES))
+		RenderGates();
+	if(!GameClient()->m_HudEditor.IsActive() && !GameClient()->m_Focus.Hides(CFocus::ITEM_SPLITS))
 		RenderHudBox(false);
 	RenderEditHelp();
 	RenderRenameBox();
@@ -1201,8 +1203,9 @@ void CSplits::ShowPbNotice(int From, int To, int Millis, int OldBest, int RouteS
 
 void CSplits::RenderEditHelp()
 {
-	const bool ShowNotice = time_get() < m_NoticeUntil && !m_Notice.empty();
-	const bool ShowPb = time_get() < m_PbNoticeUntil && !m_aPbNotice[0].empty();
+	const bool HideNotices = GameClient()->m_Focus.Hides(CFocus::ITEM_NOTICES);
+	const bool ShowNotice = time_get() < m_NoticeUntil && !m_Notice.empty() && !HideNotices;
+	const bool ShowPb = time_get() < m_PbNoticeUntil && !m_aPbNotice[0].empty() && !HideNotices;
 	if(!m_EditMode && !ShowNotice && !ShowPb)
 		return;
 	const float Height = 300.0f;
@@ -1402,7 +1405,10 @@ int CSplits::DuoOf(int ClientId) const
 		return -1;
 	const int Team = GameClient()->m_Teams.Team(ClientId);
 	if(Team <= TEAM_FLOCK || Team >= TEAM_SUPER)
-		return -1;
+	{
+		// no team (duo maps are often played like that): whoever you have been hooking with
+		return GameClient()->m_Focus.RecentPartner(CFocus::PARTNER_SECONDS * Client()->GameTickSpeed());
+	}
 	// the dummy first, then anyone else in the team
 	for(int Local : GameClient()->m_aLocalIds)
 		if(Local >= 0 && Local != ClientId && GameClient()->m_Teams.Team(Local) == Team && GameClient()->m_Snap.m_apPlayerInfos[Local])

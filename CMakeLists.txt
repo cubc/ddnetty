@@ -3114,6 +3114,8 @@ if(CLIENT)
     components/damageind.h
     components/ddnetty/ideal_demo.cpp
     components/ddnetty/ideal_demo.h
+    components/ddnetty/focus.cpp
+    components/ddnetty/focus.h
     components/ddnetty/splits.cpp
     components/ddnetty/splits.h
     components/debughud.cpp

@@ -38,3 +38,11 @@ MACRO_CONFIG_INT(DtSplitsPbSound, dt_splits_pb_sound, 0, 0, 1, CFGFLAG_CLIENT | 
 // BestClient network
 MACRO_CONFIG_INT(DtBestClientPresence, dt_bestclient_presence, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Announce yourself to the BestClient indicator server (it marks DDNetty as FAKE since it is not an official BestClient build)")
 MACRO_CONFIG_INT(DtFakePingSafety, dt_fake_ping_safety, 1, 0, 5, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fake ping below your real ping: ticks of distance from the server's tick (0 = lowest possible, may drop inputs)")
+
+// ddnetty focus mode (p_focus_mode and its BestClient options are reused)
+MACRO_CONFIG_INT(DtFocusNotice, dt_focus_notice, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show \"Focus ON/OFF\" in the corner for a second when the focus mode is toggled")
+MACRO_CONFIG_INT(DtFocusHideOthers, dt_focus_hide_others, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Focus mode hides the other tees with their hooks and shots (your team, dummy and ghost stay)")
+MACRO_CONFIG_INT(DtFocusHideSplits, dt_focus_hide_splits, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Focus mode hides the splits box")
+MACRO_CONFIG_INT(DtFocusHideGates, dt_focus_hide_gates, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Focus mode hides your checkpoints on the map")
+MACRO_CONFIG_INT(DtFocusHideBroadcast, dt_focus_hide_broadcast, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Focus mode hides the server broadcast and the vote window")
+MACRO_CONFIG_INT(DtFocusHideNotices, dt_focus_hide_notices, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Focus mode hides the DDNetty messages (new best segment, ...)")
