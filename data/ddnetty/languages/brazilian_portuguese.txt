@@ -526,8 +526,16 @@ Save demos of the best segments
 == Salvar demos dos melhores trechos
 
 [DDNetty]
-Every new best segment is cut out of the replay recorder into demos/ddnetty/segments when the run ends. Has to be turned on for each map too.
-== Cada novo melhor trecho é cortado do gravador de replays para demos/ddnetty/segments quando a tentativa acaba. Também precisa ser ligado em cada mapa.
+Every new best segment is cut out of the replay recorder into demos/ddnetty/segments when the run ends. Works on the maps where "On this map" is ticked, or everywhere with "On every map".
+== Cada novo melhor trecho é cortado do gravador de replays para demos/ddnetty/segments quando a tentativa acaba. Funciona nos mapas com "Neste mapa" marcado, ou em todos com "Em todos os mapas".
+
+[DDNetty]
+On every map
+== Em todos os mapas
+
+[DDNetty]
+Always save the best segment demos, on any map, without turning it on for each one. The replay recorder stays on all the time.
+== Sempre salva as demos dos melhores trechos, em qualquer mapa, sem precisar ligar em cada um. O gravador de replays fica ligado o tempo todo.
 
 [DDNetty]
 On this map
