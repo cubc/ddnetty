@@ -62,6 +62,8 @@ public:
 
 	// bestclient
 	void InputDebounce(int Dummy, int Input);
+	bool IsInputDebounceAllowed() const;
+	bool IsInputDebounceBlocked() const;
 	struct CInputDebounceState
 	{
 		int m_Direction = 0;
@@ -69,7 +71,6 @@ public:
 		int m_Hook = 0;
 	};
 	CInputDebounceState m_aInputDebounce[NUM_DUMMIES];
-
 	// bestclient
 
 private:
@@ -81,6 +82,7 @@ private:
 		INPUT_JUMP,
 		INPUT_HOOK,
 	};
+	void ApplyInputDebounce(int Dummy, CNetObj_PlayerInput &Input) const;
 	// bestclient
 
 	static void ConKeyInputState(IConsole::IResult *pResult, void *pUserData);

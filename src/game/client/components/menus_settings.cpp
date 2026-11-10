@@ -108,7 +108,7 @@ void CMenus::RenderSettings(CUIRect MainView)
 	// bestclient
 	MainView.Margin(20.0f, &MainView);
 
-	const bool NeedRestart = m_NeedRestartGraphics || m_NeedRestartSound || m_NeedRestartUpdate;
+	const bool NeedRestart = m_NeedRestartGraphics || m_NeedRestartSound || m_NeedRestartUpdate || m_NeedRestartDiscord; // bestclient
 	if(NeedRestart)
 	{
 		MainView.HSplitBottom(20.0f, &MainView, &RestartBar);
@@ -184,43 +184,39 @@ void CMenus::RenderSettings(CUIRect MainView)
 
 	if(NeedRestart)
 	{
+		// bestclient
 		CUIRect RestartWarning, RestartButton;
-		RestartBar.VSplitRight(125.0f, &RestartWarning, &RestartButton);
-		RestartWarning.VSplitRight(10.0f, &RestartWarning, nullptr);
-		if(m_NeedRestartUpdate)
+#if defined(CONF_AUTOUPDATE)
+		const bool UpdateReady = Updater()->GetCurrentState() == IUpdater::NEED_RESTART;
+#else
+		const bool UpdateReady = false;
+#endif
+		if(UpdateReady)
 		{
-			// bestclient
 			TextRender()->TextColor(0.7f, 1.0f, 0.7f, 1.0f);
-			Ui()->DoLabel(&RestartWarning, Localize("BestClient update downloaded! Restart to apply."), 14.0f, TEXTALIGN_ML);
+			Ui()->DoLabel(&RestartBar, Localize("BestClient update downloaded! Restart to apply."), 14.0f, TEXTALIGN_ML);
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
-			// bestclient
 		}
 		else
 		{
+			RestartBar.VSplitRight(125.0f, &RestartWarning, &RestartButton);
+			RestartWarning.VSplitRight(10.0f, &RestartWarning, nullptr);
 			Ui()->DoLabel(&RestartWarning, Localize("You must restart the game for all settings to take effect."), 14.0f, TEXTALIGN_ML);
-		}
 
-		static CButtonContainer s_RestartButton;
-		if(DoButton_Menu(&s_RestartButton, Localize("Restart"), 0, &RestartButton))
-		{
-#if defined(CONF_AUTOUPDATE)
-			// bestclient
-			if(m_NeedRestartUpdate)
+			static CButtonContainer s_RestartButton;
+			if(DoButton_Menu(&s_RestartButton, Localize("Restart"), 0, &RestartButton))
 			{
-				Updater()->ApplyUpdateAndRestart();
-			}
-			else
-			// bestclient
-#endif
-			if(Client()->State() == IClient::STATE_ONLINE || GameClient()->Editor()->HasUnsavedData())
-			{
-				m_Popup = POPUP_RESTART;
-			}
-			else
-			{
-				Client()->Restart();
+				if(Client()->State() == IClient::STATE_ONLINE || GameClient()->Editor()->HasUnsavedData())
+				{
+					m_Popup = POPUP_RESTART;
+				}
+				else
+				{
+					Client()->Restart();
+				}
 			}
 		}
+		// bestclient
 	}
 }
 

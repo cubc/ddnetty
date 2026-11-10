@@ -95,6 +95,10 @@ Map preview in server list
 == Превью карты в списке серверов
 
 [BestClient]
+Show coordinates above tees
+== Показывать координаты над тии
+
+[BestClient]
 Show real hitbox
 == Показывать реальный хитбокс
 
@@ -113,6 +117,10 @@ Show current checkpoint in hud
 [BestClient]
 Show points in tab
 == Показывать поинты в табе
+
+[BestClient]
+Show friend icon in scoreboard
+== Показывать иконку друга в скорборде
 
 [BestClient]
 Show spectator nicknames
@@ -779,6 +787,10 @@ Custom size
 == Свой размер
 
 [BestClient]
+Cursor as without stretch
+== Курсор как без растяжения
+
+[BestClient]
 Looks like you're on a server where this feature is forbidden
 == Похоже, на этом сервере эта фича запрещена
 
@@ -1215,6 +1227,10 @@ Show finished map on EGO
 == Показывать пройденную карту на EGO
 
 [BestClient]
+Show finished map on Legit Network
+== Показывать пройденную карту на Legit Network
+
+[BestClient]
 Use BestClient MasterServer
 == Использовать мастерсервер BestClient
 
@@ -1495,12 +1511,20 @@ BestClient Links
 == Ссылки BestClient
 
 [BestClient]
+Discord
+== Дискорд
+
+[BestClient]
 Telegram
-== Telegram
+== Телеграм
 
 [BestClient]
 Check update
 == Чек апдейт
+
+[BestClient]
+Try Light
+== Попробовать Лайт
 
 [BestClient]
 Config Files
@@ -2213,3 +2237,51 @@ Others
 [Gradient]
 All
 == Все
+
+[BestClient]
+Changelog
+== Список изменений
+
+[BestClient]
+Refresh
+== Обновить
+
+[BestClient]
+Open
+== Открыть
+
+[BestClient]
+Latest
+== Последний
+
+[BestClient]
+Pre-release
+== Пререлиз
+
+[BestClient]
+No description
+== Нет описания
+
+[BestClient]
+No releases
+== Релизов нет
+
+[BestClient]
+Loading releases...
+== Загрузка релизов...
+
+[BestClient]
+Updating...
+== Обновление...
+
+[BestClient]
+Couldn't load releases
+== Не удалось загрузить релизы
+
+[BestClient]
+Couldn't parse releases
+== Не удалось прочитать релизы
+
+[BestClient]
+GitHub rate limit reached
+== Лимит запросов GitHub

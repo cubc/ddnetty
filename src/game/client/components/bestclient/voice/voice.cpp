@@ -17,9 +17,9 @@
 #include <engine/engine.h>
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
+#include <engine/http.h>
 #include <engine/shared/bestclient_indicator_protocol.h>
 #include <engine/shared/config.h>
-#include <engine/http.h>
 #include <engine/shared/json.h>
 #include <engine/storage.h>
 #include <engine/textrender.h>
@@ -99,7 +99,8 @@ namespace
 	void WriteVoiceString(std::vector<uint8_t> &vOut, const char *pStr, int MaxLen = 128)
 	{
 		int Len = (int)str_length(pStr);
-		if(Len > MaxLen) Len = MaxLen;
+		if(Len > MaxLen)
+			Len = MaxLen;
 		BestClientVoice::WriteU16(vOut, (uint16_t)Len);
 		for(int i = 0; i < Len; i++)
 			vOut.push_back((uint8_t)pStr[i]);
@@ -673,6 +674,38 @@ void CVoiceChat::SaveMutedNamesToFile()
 	io_close(File);
 }
 
+void CVoiceChat::SyncNameLists()
+{
+	if(str_comp(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames) != 0)
+	{
+		ParseVoiceNameList(g_Config.m_BcVoiceChatMutedNames, m_MutedNameKeys);
+		str_copy(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames, sizeof(m_aLastMutedNames));
+		m_PeerListDirty = true;
+	}
+	if(str_comp(m_aLastNameVolumes, g_Config.m_BcVoiceChatNameVolumes) != 0)
+	{
+		ParseVoiceNameVolumeList(g_Config.m_BcVoiceChatNameVolumes, m_NameVolumePercent);
+		str_copy(m_aLastNameVolumes, g_Config.m_BcVoiceChatNameVolumes, sizeof(m_aLastNameVolumes));
+		m_PeerListDirty = true;
+	}
+	LoadMutedNamesFromFile();
+	if(str_comp(m_aLastPersistedMutedNames, g_Config.m_BcVoiceChatMutedNames) != 0)
+	{
+		str_copy(m_aLastPersistedMutedNames, g_Config.m_BcVoiceChatMutedNames, sizeof(m_aLastPersistedMutedNames));
+		m_MutedListDirty = true;
+	}
+	if(m_MutedListDirty)
+	{
+		const int64_t Now = time_get();
+		if(m_LastMuteSaveTime == 0 || Now - m_LastMuteSaveTime >= time_freq())
+		{
+			SaveMutedNamesToFile();
+			m_LastMuteSaveTime = Now;
+			m_MutedListDirty = false;
+		}
+	}
+}
+
 void CVoiceChat::OnStateChange(int NewState, int OldState)
 {
 	(void)OldState;
@@ -698,6 +731,26 @@ void CVoiceChat::OnStateChange(int NewState, int OldState)
 
 void CVoiceChat::OnUpdate()
 {
+	if(m_pServerListTask && m_pServerListTask->State() == EHttpState::DONE)
+	{
+		FinishServerList();
+		ResetServerListTask();
+	}
+	else if(m_pServerListTask && (m_pServerListTask->State() == EHttpState::ERROR || m_pServerListTask->State() == EHttpState::ABORTED))
+	{
+		ResetServerListTask();
+	}
+
+	SyncNameLists();
+
+	const bool Enabled = g_Config.m_BcVoiceChatEnable != 0;
+	if(!Enabled)
+	{
+		if(m_Socket)
+			StopVoice();
+		return;
+	}
+
 	const int64_t PerfStart = time_get();
 	const bool Online = Client()->State() == IClient::STATE_ONLINE;
 	EnsureDefaultVoiceServerAddress();
@@ -735,48 +788,9 @@ void CVoiceChat::OnUpdate()
 		InvalidatePeerCaches();
 	}
 
-	if(str_comp(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames) != 0)
-	{
-		ParseVoiceNameList(g_Config.m_BcVoiceChatMutedNames, m_MutedNameKeys);
-		str_copy(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames, sizeof(m_aLastMutedNames));
-		m_PeerListDirty = true;
-	}
-	if(str_comp(m_aLastNameVolumes, g_Config.m_BcVoiceChatNameVolumes) != 0)
-	{
-		ParseVoiceNameVolumeList(g_Config.m_BcVoiceChatNameVolumes, m_NameVolumePercent);
-		str_copy(m_aLastNameVolumes, g_Config.m_BcVoiceChatNameVolumes, sizeof(m_aLastNameVolumes));
-		m_PeerListDirty = true;
-	}
-	LoadMutedNamesFromFile();
-	if(str_comp(m_aLastPersistedMutedNames, g_Config.m_BcVoiceChatMutedNames) != 0)
-	{
-		str_copy(m_aLastPersistedMutedNames, g_Config.m_BcVoiceChatMutedNames, sizeof(m_aLastPersistedMutedNames));
-		m_MutedListDirty = true;
-	}
-	if(m_MutedListDirty)
-	{
-		const int64_t Now = time_get();
-		if(m_LastMuteSaveTime == 0 || Now - m_LastMuteSaveTime >= time_freq())
-		{
-			SaveMutedNamesToFile();
-			m_LastMuteSaveTime = Now;
-			m_MutedListDirty = false;
-		}
-	}
-
 	const std::string EffectiveServerAddr = EffectiveServerAddress();
 	const bool ServerChanged = str_comp(m_aLastServerAddr, EffectiveServerAddr.c_str()) != 0;
 	const bool DeviceChanged = m_LastInputDevice != g_Config.m_BcVoiceChatInputDevice || m_LastOutputDevice != g_Config.m_BcVoiceChatOutputDevice;
-
-	if(m_pServerListTask && m_pServerListTask->State() == EHttpState::DONE)
-	{
-		FinishServerList();
-		ResetServerListTask();
-	}
-	else if(m_pServerListTask && (m_pServerListTask->State() == EHttpState::ERROR || m_pServerListTask->State() == EHttpState::ABORTED))
-	{
-		ResetServerListTask();
-	}
 
 	if(Online && m_vServerEntries.empty() && !m_pServerListTask)
 	{
@@ -789,14 +803,6 @@ void CVoiceChat::OnUpdate()
 	}
 
 	ProcessServerListPing();
-
-	const bool Enabled = g_Config.m_BcVoiceChatEnable != 0;
-	if(!Enabled)
-	{
-		if(m_Socket)
-			StopVoice();
-		return;
-	}
 
 	if(ServerChanged || DeviceChanged)
 	{
@@ -1428,6 +1434,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 			return true;
 		}
 
+		SyncNameLists();
 		if(m_MutedNameKeys.find(Key) != m_MutedNameKeys.end())
 		{
 			GameClient()->m_Chat.Echo(Localize("Voice mute: already muted"));
@@ -1460,6 +1467,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 			return true;
 		}
 
+		SyncNameLists();
 		if(m_MutedNameKeys.find(Key) == m_MutedNameKeys.end())
 		{
 			GameClient()->m_Chat.Echo(Localize("Voice unmute: nickname not muted"));
@@ -1492,6 +1500,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 			return true;
 		}
 
+		SyncNameLists();
 		int Percent = 0;
 		if(!str_toint(aValue, &Percent) || Percent < 0 || Percent > 100)
 		{
@@ -1580,7 +1589,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		g_Config.m_BcVoiceChatRadiusTiles = Tiles;
 		g_Config.m_BcVoiceChatRadiusEnabled = 1;
 		char aMsg[128];
-	str_format(aMsg, sizeof(aMsg), Localize("Voice radius: %s (%d tiles)"), Localize("On"), Tiles);
+		str_format(aMsg, sizeof(aMsg), Localize("Voice radius: %s (%d tiles)"), Localize("On"), Tiles);
 		GameClient()->m_Chat.Echo(aMsg);
 		return true;
 	}

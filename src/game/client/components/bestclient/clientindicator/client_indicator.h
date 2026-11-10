@@ -2,20 +2,20 @@
 #ifndef GAME_CLIENT_COMPONENTS_BESTCLIENT_CLIENTINDICATOR_CLIENT_INDICATOR_H
 #define GAME_CLIENT_COMPONENTS_BESTCLIENT_CLIENTINDICATOR_CLIENT_INDICATOR_H
 
-#include "client_indicator_sync.h"
 #include "browser_cache.h"
+#include "client_indicator_sync.h"
 #include "presence_cache.h"
 
 #include <base/net.h>
 
-#include <game/client/component.h>
-
 #include <engine/http.h>
 #include <engine/shared/uuid_manager.h>
 
+#include <game/client/component.h>
+
 #include <memory>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 class CClientIndicator : public CComponent
@@ -33,6 +33,7 @@ public:
 	bool IsPlayerBClient(int ClientId) { return IsPlayerBestClient(ClientId); }
 	bool IsPlayerDeveloper(int ClientId) const;
 	bool IsPlayerFakeVersion(int ClientId) const;
+	bool IsPlayerLightEdition(int ClientId) const;
 	bool GetPlayerVersionLabel(int ClientId, char *pVersion, int VersionSize) const;
 
 	const std::unordered_map<std::string, std::unordered_map<std::string, std::string>> &AllPlayerVersions() const { return m_BrowserCache.PlayerVersionsByServer(); }
@@ -55,6 +56,7 @@ private:
 	int64_t m_LastBrowserRefreshTick = 0;
 	int64_t m_LastTokenRefreshTick = 0;
 	int64_t m_LastPresencePollTick = 0;
+	int64_t m_LastPollTick = 0;
 	int64_t m_LastRegistrationSyncTick = 0;
 	int64_t m_LastPerfReportTick = 0;
 	int64_t m_LastUpdateCostTick = 0;
@@ -66,10 +68,12 @@ private:
 	std::unordered_set<int> m_RegisteredClientIds;
 	std::unordered_set<int> m_DeveloperClientIds;
 	std::unordered_set<int> m_FakeClientIds;
+	std::unordered_set<int> m_LightClientIds;
 	std::unordered_map<int, std::string> m_ClientVersions;
 	CPresenceCache m_PresenceCache;
 
 	std::shared_ptr<IHttpRequest> m_pBrowserTask = nullptr;
+	std::shared_ptr<class CBrowserCacheJob> m_pBrowserJob = nullptr;
 	std::shared_ptr<IHttpRequest> m_pTokenTask = nullptr;
 	CBrowserCache m_BrowserCache;
 	char m_aWebSharedToken[256] = "";

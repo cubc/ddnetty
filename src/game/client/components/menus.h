@@ -309,6 +309,7 @@ protected:
 	bool m_NeedRestartGraphics;
 	bool m_NeedRestartSound;
 	bool m_NeedRestartUpdate;
+	bool m_NeedRestartDiscord; // bestclient
 	bool m_NeedSendinfo;
 	bool m_NeedSendDummyinfo;
 
@@ -803,16 +804,22 @@ public:
 		PAGE_NETWORK,
 		PAGE_GHOST,
 		PAGE_DDNETTY, // ddnetty
+		PAGE_CHANGELOG, // bestclient
 
 		PAGE_LENGTH,
 	};
 
 	// bestclient
+	int Popup() const { return m_Popup; }
 	bool IsIngameGamePage() const { return m_MenuActive && Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_GAME; }
 	bool IsServerBrowserPageActive() const
 	{
 		return (Client()->State() == IClient::STATE_OFFLINE && m_MenuPage >= PAGE_INTERNET && m_MenuPage <= PAGE_FAVORITE_COMMUNITY_5) ||
 			(Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_NETWORK);
+	}
+	bool IsMainMenuOpen() const
+	{
+		return Client()->State() == IClient::STATE_OFFLINE && m_ShowStart && m_Popup == POPUP_NONE && g_Config.m_ClEditor == 0;
 	}
 	// bestclient
 
@@ -866,6 +873,7 @@ public:
 		SMALL_TAB_BROWSER_BESTCLIENT,
 		// bestclient
 		SMALL_TAB_BROWSER_FRIENDS,
+		SMALL_TAB_CHANGELOG, // bestclient
 
 		SMALL_TAB_LENGTH,
 	};
@@ -1066,6 +1074,7 @@ private:
 	void RenderSettingsBestClientFun(CUIRect MainView);
 	// bestclient
 	void RenderSettingsBestClientInfo(CUIRect MainView); // bestclient
+	void RenderChangelog(CUIRect MainView); // bestclient
 	void RenderSettingsBestClientConfigPresets(CUIRect MainView); // bestclient
 	void RenderSettingsBestClientChatMediaBlock(CUIRect &Column); // bestclient
 	void RenderPopupStylePicker(CUIRect Box); // bestclient

@@ -1489,6 +1489,7 @@ set(EXPECTED_DATA
   BestClient/bc_dev_icon.png
   BestClient/bc_fake_icon.png
   BestClient/bc_icon.png
+  BestClient/bc_light_icon.png
   BestClient/gui_logo.png
   BestClient/languages/russian.txt
   BestClient/languages/simplified_chinese.txt
@@ -2680,6 +2681,11 @@ file(GLOB_RECURSE ENGINE_EXTERNAL_CHAISCRIPT
 )
 list(APPEND ENGINE_EXTERNAL ${ENGINE_EXTERNAL_CHAISCRIPT})
 
+file(GLOB_RECURSE ENGINE_EXTERNAL_READERWRITERQUEUE
+  "${PROJECT_SOURCE_DIR}/src/engine/external/readerwriterqueue/*.h"
+)
+list(APPEND ENGINE_EXTERNAL ${ENGINE_EXTERNAL_READERWRITERQUEUE})
+
 set_src(ENGINE_GFX GLOB src/engine/gfx
   # tidy-alphabetical-start
   image.cpp
@@ -2908,6 +2914,8 @@ if(CLIENT)
     components/bestclient/config_presets.h
     components/bestclient/profile_assets.cpp
     components/bestclient/profile_assets.h
+    components/bestclient/profiler.cpp
+    components/bestclient/profiler.h
     components/bestclient/admin_panel.cpp
     components/bestclient/admin_panel.h
     components/bestclient/aspect_ratio.cpp
@@ -2949,6 +2957,9 @@ if(CLIENT)
     components/bestclient/menus_assets_editor.cpp
     components/bestclient/menus_bestclient.cpp
     components/bestclient/menus_games.cpp
+    components/bestclient/keybind_map.cpp
+    components/bestclient/keybind_map.h
+    components/bestclient/keybind_map_ui.h
     components/bestclient/motion_blur.h
     components/bestclient/motion_blur_opengl.h
     components/bestclient/motion_blur_opengl.inl
@@ -3047,6 +3058,8 @@ if(CLIENT)
     components/bestclient/gif_bubbles.h
     components/bestclient/ego_finished_maps.cpp
     components/bestclient/ego_finished_maps.h
+    components/bestclient/legit_finished_maps.cpp
+    components/bestclient/legit_finished_maps.h
     components/bestclient/ego_tiles_prediction.cpp
     components/bestclient/ego_tiles_prediction.h
     components/bestclient/edgehelper.cpp
@@ -3078,6 +3091,8 @@ if(CLIENT)
     components/bestclient/subsystem_runtime.h
     components/bestclient/updater.cpp
     components/bestclient/updater.h
+    components/bestclient/changelog.cpp
+    components/bestclient/changelog.h
     components/bestclient/version.h
     components/bestclient/visualizer/analyzer.cpp
     components/bestclient/visualizer/analyzer.h
@@ -3529,6 +3544,9 @@ if(CLIENT)
       PROPERTY OUTPUT_NAME ${CLIENT_EXECUTABLE}
   )
   target_link_libraries(game-client ${LIBS_CLIENT})
+  if(WIN32)
+    target_link_libraries(game-client psapi)
+  endif()
 
   if(TARGET_OS STREQUAL "ios")
     set(IOS_INFO_PLIST "${PROJECT_BINARY_DIR}/ios-Info.plist")

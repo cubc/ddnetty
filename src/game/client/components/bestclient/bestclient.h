@@ -10,12 +10,14 @@
 #include <game/client/component.h>
 #include <game/teamscore.h>
 
+#include "changelog.h"
 #include "menu_media_background.h"
 
 #include <memory>
 
 class IHttpRequest;
 class IConfigManager;
+class IStorage;
 
 class CTeeRenderInfo;
 
@@ -34,6 +36,7 @@ void BestClientPlayHammerHit(CGameClient *pGameClient, vec2 Pos, float Alpha, fl
 class CBestClient : public CComponent
 {
 	CMenuMediaBackground m_MenuMediaBackground;
+	CChangelog m_Changelog;
 	bool m_GoresHeavyWeapon = false;
 
 	int m_aAutoTeamLockLastTeam[NUM_DUMMIES] = {TEAM_FLOCK, TEAM_FLOCK};
@@ -68,6 +71,7 @@ public:
 
 	CMenuMediaBackground &MenuMediaBackground() { return m_MenuMediaBackground; }
 	const CMenuMediaBackground &MenuMediaBackground() const { return m_MenuMediaBackground; }
+	CChangelog &Changelog() { return m_Changelog; }
 
 	bool ApplyFrozenSkin(CTeeRenderInfo &RenderInfo, bool Frozen);
 
@@ -93,10 +97,11 @@ float BestClientScoreboardPlayerPopupHeight(const class CGameClient *pGameClient
 float BestClientTeeRenderSize(const class CGameClient *pGameClient, int ClientId);
 void BestClientRenderRealHitbox(class IGraphics *pGraphics, class CGameClient *pGameClient, int ClientId, vec2 Position);
 void BestClientRenderVotePercentages(class CUi *pUi, class ITextRender *pTextRender, const class CUIRect &Bars, int Yes, int No, int Total);
-void BestClientRenderIndicatorIcon(class IGraphics *pGraphics, const class CUIRect &Rect, bool Developer = false, bool Fake = false, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+void BestClientRenderIndicatorIcon(class IGraphics *pGraphics, const class CUIRect &Rect, bool Developer = false, bool Fake = false, bool Light = false, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
 
 constexpr const char *BESTCLIENT_BETTER_FONT_FACE = "ActayWide Bold";
 void BestClientApplyMenuFont(class ITextRender *pTextRender);
 void BestClientRefreshMenuFont(class CGameClient *pGameClient);
+bool BestClientOpenDemoInNewClient(IStorage *pStorage, const char *pAbsoluteDemoPath);
 
 #endif

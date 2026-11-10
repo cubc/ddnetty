@@ -95,6 +95,10 @@ Map preview in server list
 == 服务器列表中的地图预览
 
 [BestClient]
+Show coordinates above tees
+== 在 Tee 上方显示坐标
+
+[BestClient]
 Show real hitbox
 == 显示真实碰撞箱
 
@@ -113,6 +117,10 @@ Show current checkpoint in hud
 [BestClient]
 Show points in tab
 == 在记分板中显示分数
+
+[BestClient]
+Show friend icon in scoreboard
+== 在记分板中显示好友图标
 
 [BestClient]
 Show spectator nicknames
@@ -779,6 +787,10 @@ Custom size
 == 自定义大小
 
 [BestClient]
+Cursor as without stretch
+== 光标如同未拉伸
+
+[BestClient]
 Looks like you're on a server where this feature is forbidden
 == 当前服务器似乎禁止此功能
 
@@ -1211,6 +1223,10 @@ Show finished map on EGO
 == 在 EGO 上显示已完成地图
 
 [BestClient]
+Show finished map on Legit Network
+== 在 Legit Network 上显示已完成地图
+
+[BestClient]
 Use BestClient MasterServer
 == 使用 BestClient 主服务器
 
@@ -1497,6 +1513,10 @@ Telegram
 [BestClient]
 Check update
 == 检查更新
+
+[BestClient]
+Try Light
+== 试用 Light
 
 [BestClient]
 Config Files
