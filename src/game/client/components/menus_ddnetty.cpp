@@ -342,17 +342,26 @@ void CMenus::RenderDDNettySplits(CUIRect MainView)
 	MainView.HSplitTop(Spacing, nullptr, &MainView);
 	MainView.HSplitTop(LineSize, &Row, &MainView);
 	static int s_SegDemosCheckbox, s_SegDemosMapCheckbox, s_IdealDemoCheckbox;
-	Row.VSplitLeft(260.0f, &Button, &Row);
+	Row.VSplitLeft(250.0f, &Button, &Row);
 	if(DoButton_CheckBox(&s_SegDemosCheckbox, DtLocalize("Save demos of the best segments"), g_Config.m_DtSplitsSegmentDemos, &Button))
 	{
 		g_Config.m_DtSplitsSegmentDemos ^= 1;
 		Client()->DemoRecorder_UpdateReplayRecorder();
 	}
-	GameClient()->m_Tooltips.DoToolTip(&s_SegDemosCheckbox, &Button, DtLocalize("Every new best segment is cut out of the replay recorder into demos/ddnetty/segments when the run ends. Has to be turned on for each map too."));
-	Row.VSplitLeft(130.0f, &Button, &Row);
-	if(DoButton_CheckBox(&s_SegDemosMapCheckbox, DtLocalize("On this map"), Splits.SegmentDemosOnMap(), &Button))
+	GameClient()->m_Tooltips.DoToolTip(&s_SegDemosCheckbox, &Button, DtLocalize("Every new best segment is cut out of the replay recorder into demos/ddnetty/segments when the run ends. Works on the maps where \"On this map\" is ticked, or everywhere with \"On every map\"."));
+	Row.VSplitLeft(115.0f, &Button, &Row);
+	// with "every map" on, this map records too, so the box shows as ticked
+	if(DoButton_CheckBox(&s_SegDemosMapCheckbox, DtLocalize("On this map"), Splits.SegmentDemosOnMap() || g_Config.m_DtSplitsSegmentDemosAll, &Button) && !g_Config.m_DtSplitsSegmentDemosAll)
 		Splits.SetSegmentDemosOnMap(!Splits.SegmentDemosOnMap());
-	Row.VSplitLeft(200.0f, &Button, &Row);
+	Row.VSplitLeft(135.0f, &Button, &Row);
+	static int s_SegDemosAllCheckbox;
+	if(DoButton_CheckBox(&s_SegDemosAllCheckbox, DtLocalize("On every map"), g_Config.m_DtSplitsSegmentDemosAll, &Button))
+	{
+		g_Config.m_DtSplitsSegmentDemosAll ^= 1;
+		Client()->DemoRecorder_UpdateReplayRecorder();
+	}
+	GameClient()->m_Tooltips.DoToolTip(&s_SegDemosAllCheckbox, &Button, DtLocalize("Always save the best segment demos, on any map, without turning it on for each one. The replay recorder stays on all the time."));
+	Row.VSplitLeft(195.0f, &Button, &Row);
 	if(DoButton_CheckBox(&s_IdealDemoCheckbox, DtLocalize("Build the ideal run demo"), g_Config.m_DtSplitsIdealDemo, &Button))
 		g_Config.m_DtSplitsIdealDemo ^= 1;
 	GameClient()->m_Tooltips.DoToolTip(&s_IdealDemoCheckbox, &Button, DtLocalize("When every segment of the route has a demo, they are stitched into one demo of your ideal run (with your team mate), in demos/ddnetty/ideal."));

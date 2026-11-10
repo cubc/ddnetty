@@ -1496,7 +1496,7 @@ void CSplits::RenderHudBox(bool Preview)
 
 bool CSplits::SegmentDemosActive() const
 {
-	return g_Config.m_DtSplits && g_Config.m_DtSplitsSegmentDemos && m_Data.m_SegmentDemos;
+	return g_Config.m_DtSplits && g_Config.m_DtSplitsSegmentDemos && (g_Config.m_DtSplitsSegmentDemosAll || m_Data.m_SegmentDemos);
 }
 
 void CSplits::SetSegmentDemosOnMap(bool On)
