@@ -1,10 +1,10 @@
 /* Copyright © 2026 BestProject Team */
 #include "client_indicator.h"
 
-#include "protocol.h"
-#include "version_label.h"
 #include "../subsystem_runtime.h"
 #include "../version.h"
+#include "protocol.h"
+#include "version_label.h"
 
 #include <base/log.h>
 #include <base/math.h>
@@ -13,10 +13,12 @@
 #include <base/time.h>
 
 #include <engine/client.h>
+#include <engine/engine.h>
 #include <engine/http.h>
 #include <engine/serverbrowser.h>
 #include <engine/shared/bestclient_indicator_protocol.h>
 #include <engine/shared/config.h>
+#include <engine/shared/jobs.h>
 #include <engine/shared/json.h>
 #include <engine/shared/network.h>
 
@@ -25,6 +27,39 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstring>
+
+class CBrowserCacheJob : public IJob
+{
+	std::shared_ptr<IHttpRequest> m_pBrowserTask;
+
+public:
+	CBrowserCache m_LoadedCache;
+	bool m_Success = false;
+
+	CBrowserCacheJob(std::shared_ptr<IHttpRequest> pBrowserTask) :
+		m_pBrowserTask(std::move(pBrowserTask))
+	{
+		Abortable(true);
+	}
+
+	void Run() override
+	{
+		if(State() == STATE_ABORTED || !m_pBrowserTask)
+			return;
+		json_value *pJson = m_pBrowserTask->ResultJson();
+		if(State() == STATE_ABORTED)
+		{
+			if(pJson)
+				json_value_free(pJson);
+			return;
+		}
+		if(pJson)
+		{
+			m_Success = m_LoadedCache.Load(*pJson);
+			json_value_free(pJson);
+		}
+	}
+};
 
 namespace
 {
@@ -143,6 +178,8 @@ namespace
 			return "version_announce";
 		case BestClientIndicator::PACKET_PEER_VERSION_STATE:
 			return "peer_version_state";
+		case BestClientIndicator::PACKET_PEER_EDITION_STATE:
+			return "peer_edition_state";
 		default:
 			return "unknown";
 		}
@@ -326,6 +363,46 @@ bool CClientIndicator::IsPlayerFakeVersion(int ClientId) const
 	return false;
 }
 
+bool CClientIndicator::IsPlayerLightEdition(int ClientId) const
+{
+	if(Client()->State() != IClient::STATE_ONLINE)
+		return false;
+	for(const int LocalId : GameClient()->m_aLocalIds)
+	{
+		if(LocalId >= 0 && ClientId == LocalId)
+			return false;
+	}
+	if(m_LightClientIds.find(ClientId) != m_LightClientIds.end())
+		return true;
+
+	const char *pPlayerName = PlayerNameForClient(ClientId);
+	if(pPlayerName[0] == '\0')
+		return false;
+
+	const char *pServerAddress = m_aCachedGameServerAddr[0] != '\0' ? m_aCachedGameServerAddr : nullptr;
+	char aFallbackAddress[NETADDR_MAXSTRSIZE];
+	if(!pServerAddress)
+	{
+		net_addr_str(&Client()->ServerAddress(), aFallbackAddress, sizeof(aFallbackAddress), true);
+		pServerAddress = aFallbackAddress;
+	}
+	bool BrowserLight = false;
+	if(m_BrowserCache.HasPlayer(pServerAddress, pPlayerName, nullptr, nullptr, &BrowserLight) && BrowserLight)
+		return true;
+
+	const IServerBrowser::CServerEntry *pCurrentServer = ServerBrowser()->Find(Client()->ServerAddress());
+	if(!pCurrentServer)
+		return false;
+
+	for(const auto &ClientInfo : pCurrentServer->m_Info.m_vClients)
+	{
+		if(ClientInfo.m_BestClientLight && str_comp(ClientInfo.m_aName, pPlayerName) == 0)
+			return true;
+	}
+
+	return false;
+}
+
 bool CClientIndicator::GetPlayerVersionLabel(int ClientId, char *pVersion, int VersionSize) const
 {
 	if(!pVersion || VersionSize <= 0)
@@ -383,7 +460,7 @@ void CClientIndicator::RefreshBrowserCache(bool Force)
 		DebugLog("browser refresh skipped: browser url is empty");
 		return;
 	}
-	if(m_pBrowserTask && !m_pBrowserTask->Done())
+	if((m_pBrowserTask && !m_pBrowserTask->Done()) || (m_pBrowserJob && !m_pBrowserJob->Done()))
 	{
 		if(!Force)
 		{
@@ -446,7 +523,7 @@ void CClientIndicator::OnUpdate()
 	const int64_t PerfStart = g_Config.m_DbgClientIndicator >= 2 ? Now : 0;
 	const int64_t TokenRefreshInterval = 5 * 60 * time_freq();
 
-	if(!m_pBrowserTask && m_LastBrowserRefreshTick == 0)
+	if(!m_pBrowserTask && !m_pBrowserJob && m_LastBrowserRefreshTick == 0)
 		RefreshBrowserCache(false);
 
 	if(PresenceEnabled && !m_WasPresenceEnabled)
@@ -470,13 +547,27 @@ void CClientIndicator::OnUpdate()
 		m_aCachedGameServerAddr[0] = '\0';
 	}
 
-	if(m_pBrowserTask && m_pBrowserTask->State() == EHttpState::DONE)
+	if(m_pBrowserJob && m_pBrowserJob->Done())
 	{
-		DebugLogF("browser request done http_status=%d", m_pBrowserTask->StatusCode());
-		FinishBrowserCacheRefresh();
+		if(m_pBrowserJob->State() == IJob::STATE_DONE && m_pBrowserJob->m_Success)
+		{
+			m_BrowserCache = std::move(m_pBrowserJob->m_LoadedCache);
+			DebugLogF("browser cache loaded %llu entries", (unsigned long long)m_BrowserCache.Players().size());
+			ApplyBrowserSnapshot();
+		}
+		else
+		{
+			DebugLog("browser cache background job failed or was aborted");
+		}
 		ResetBrowserTask();
 	}
-	else if(m_pBrowserTask && (m_pBrowserTask->State() == EHttpState::ERROR || m_pBrowserTask->State() == EHttpState::ABORTED))
+	else if(!m_pBrowserJob && m_pBrowserTask && m_pBrowserTask->State() == EHttpState::DONE)
+	{
+		DebugLogF("browser request done http_status=%d, dispatching background parse job", m_pBrowserTask->StatusCode());
+		m_pBrowserJob = std::make_shared<CBrowserCacheJob>(m_pBrowserTask);
+		Engine()->AddJob(m_pBrowserJob);
+	}
+	else if(!m_pBrowserJob && m_pBrowserTask && (m_pBrowserTask->State() == EHttpState::ERROR || m_pBrowserTask->State() == EHttpState::ABORTED))
 	{
 		DebugLogF("browser request ended with state=%d", (int)m_pBrowserTask->State());
 		ResetBrowserTask();
@@ -854,6 +945,7 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 				m_PresenceCache.SetPresent(PeerState.m_ClientId, false);
 				m_DeveloperClientIds.erase(PeerState.m_ClientId);
 				m_FakeClientIds.erase(PeerState.m_ClientId);
+				m_LightClientIds.erase(PeerState.m_ClientId);
 				m_ClientVersions.erase(PeerState.m_ClientId);
 			}
 			continue;
@@ -865,9 +957,16 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		{
 			DebugLogF("received peer_list server=%s count=%llu", PeerList.m_ServerAddress.c_str(), (unsigned long long)PeerList.m_vClientIds.size());
 			PeerList.m_vClientIds.erase(std::remove_if(PeerList.m_vClientIds.begin(), PeerList.m_vClientIds.end(),
-						    [](int ClientId) { return !IsValidPeerClientId(ClientId); }),
+							    [](int ClientId) { return !IsValidPeerClientId(ClientId); }),
 				PeerList.m_vClientIds.end());
 			m_PresenceCache.Replace(PeerList.m_vClientIds);
+			for(auto It = m_LightClientIds.begin(); It != m_LightClientIds.end();)
+			{
+				if(!m_PresenceCache.IsPresent(*It))
+					It = m_LightClientIds.erase(It);
+				else
+					++It;
+			}
 			continue;
 		}
 
@@ -908,6 +1007,19 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 					m_FakeClientIds.insert(PeerVersionState.m_ClientId);
 				else
 					m_FakeClientIds.erase(PeerVersionState.m_ClientId);
+			}
+			continue;
+		}
+
+		if(BestClientIndicator::ReadPeerEditionStatePacket(pRawData, DataSize, PeerState))
+		{
+			DebugLogF("received peer_edition_state client_id=%d light=%d player='%s' server=%s", PeerState.m_ClientId, PeerState.m_Light ? 1 : 0, PeerState.m_PlayerName.c_str(), PeerState.m_ServerAddress.c_str());
+			if(IsValidPeerClientId(PeerState.m_ClientId) && PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
+			{
+				if(PeerState.m_Light)
+					m_LightClientIds.insert(PeerState.m_ClientId);
+				else
+					m_LightClientIds.erase(PeerState.m_ClientId);
 			}
 			continue;
 		}
@@ -979,6 +1091,7 @@ void CClientIndicator::SyncLocalRegistrations(bool Force)
 			SendPresencePacket(*It, BestClientIndicator::PACKET_LEAVE);
 			m_PresenceCache.SetPresent(*It, false);
 			m_DeveloperClientIds.erase(*It);
+			m_LightClientIds.erase(*It);
 			DebugLogF("unregistered local client_id=%d", *It);
 			It = m_RegisteredClientIds.erase(It);
 		}
@@ -1024,6 +1137,7 @@ void CClientIndicator::UpdatePresence()
 		{
 			m_RegisteredClientIds.clear();
 			m_DeveloperClientIds.clear();
+			m_LightClientIds.clear();
 			m_LastHeartbeatTick = 0;
 		}
 		m_WasPresenceEnabled = true;
@@ -1035,16 +1149,20 @@ void CClientIndicator::UpdatePresence()
 		m_RegisteredClientIds.clear();
 		m_DeveloperClientIds.clear();
 		m_FakeClientIds.clear();
+		m_LightClientIds.clear();
 		m_ClientVersions.clear();
 		m_LastHeartbeatTick = 0;
 	}
 	str_copy(m_aCachedGameServerAddr, pCurrentGameServer, sizeof(m_aCachedGameServerAddr));
 	ClearPresenceBlockReason();
 
-	SyncLocalRegistrations(false);
-	ProcessIncomingPackets(false);
-
 	const int64_t Now = time_get();
+	if(m_LastPollTick == 0 || Now - m_LastPollTick >= time_freq() / 10) // 10 Hz (~every 5 ticks)
+	{
+		m_LastPollTick = Now;
+		SyncLocalRegistrations(false);
+		ProcessIncomingPackets(false);
+	}
 	if(m_LastHeartbeatTick == 0 || Now - m_LastHeartbeatTick > time_freq() * 5)
 	{
 		const bool SendDevAuth = g_Config.m_BcClientIndicatorSecretKey[0] != '\0';
@@ -1080,6 +1198,11 @@ void CClientIndicator::FinishBrowserCacheRefresh()
 
 void CClientIndicator::ResetBrowserTask()
 {
+	if(m_pBrowserJob)
+	{
+		m_pBrowserJob->Abort();
+		m_pBrowserJob = nullptr;
+	}
 	if(m_pBrowserTask)
 	{
 		m_pBrowserTask->Abort();
@@ -1145,11 +1268,13 @@ void CClientIndicator::ApplyBrowserSnapshot()
 void CClientIndicator::ResetPresenceState()
 {
 	m_LastHeartbeatTick = 0;
+	m_LastPollTick = 0;
 	m_LastPresenceStartAttempt = 0;
 	m_WasPresenceEnabled = false;
 	m_RegisteredClientIds.clear();
 	m_DeveloperClientIds.clear();
 	m_FakeClientIds.clear();
+	m_LightClientIds.clear();
 	m_ClientVersions.clear();
 	m_PresenceCache.Clear();
 	m_aLastGameServerAddr[0] = '\0';
@@ -1171,7 +1296,7 @@ void CClientIndicator::ReapplyBrowserSnapshot()
 
 bool CClientIndicator::IsBrowserCacheRefreshing() const
 {
-	return m_pBrowserTask && !m_pBrowserTask->Done();
+	return (m_pBrowserTask && !m_pBrowserTask->Done()) || (m_pBrowserJob && !m_pBrowserJob->Done());
 }
 
 bool CClientIndicator::IsPresenceEnabled() const

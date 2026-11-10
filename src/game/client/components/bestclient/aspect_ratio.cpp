@@ -18,7 +18,7 @@
 
 #include <algorithm>
 
-CAspectRatio::SConfig CAspectRatio::ReadConfig()
+CAspectRatio::CAspectConfig CAspectRatio::ReadConfig()
 {
 	return {
 		g_Config.m_BcCustomAspectRatioMode,
@@ -29,7 +29,7 @@ CAspectRatio::SConfig CAspectRatio::ReadConfig()
 	};
 }
 
-bool CAspectRatio::ConfirmNeeded(const SConfig &Cfg)
+bool CAspectRatio::ConfirmNeeded(const CAspectConfig &Cfg)
 {
 	return Cfg.m_ApplyMode == 1 && (Cfg.m_Mode > 0 || (Cfg.m_Mode < 0 && Cfg.m_Ratio > 0));
 }
@@ -103,17 +103,53 @@ bool CAspectRatio::ShouldApplyCustomAspect(bool IsActiveGameplay) const
 	return !IsAspectBlocked() && (g_Config.m_BcCustomAspectRatioApplyMode == 1 || IsActiveGameplay);
 }
 
+void CAspectRatio::ScaleIngameCursorDelta(float &X, float &Y) const
+{
+	if(!g_Config.m_BcCustomAspectRatioCursorNative)
+		return;
+
+	const int State = Client()->State();
+	const bool IsActiveGameplay = State == IClient::STATE_ONLINE || State == IClient::STATE_DEMOPLAYBACK;
+	if(!ShouldApplyCustomAspect(IsActiveGameplay))
+		return;
+
+	const int AspectMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
+	if(AspectMode <= 0 || g_Config.m_BcCustomAspectRatio < 100)
+		return;
+
+	float ForcedAspect;
+	if(AspectMode == 2 && g_Config.m_BcCustomAspectRatioNum > 0 && g_Config.m_BcCustomAspectRatioDen > 0)
+		ForcedAspect = (float)g_Config.m_BcCustomAspectRatioNum / (float)g_Config.m_BcCustomAspectRatioDen;
+	else
+		ForcedAspect = g_Config.m_BcCustomAspectRatio / 100.0f;
+
+	const int ScreenW = Graphics()->ScreenWidth();
+	const int ScreenH = Graphics()->ScreenHeight();
+	if(ScreenW <= 0 || ScreenH <= 0)
+		return;
+
+	float ForcedW, ForcedH, NativeW, NativeH;
+	Graphics()->CalcScreenParams(ForcedAspect, 1.0f, &ForcedW, &ForcedH);
+	Graphics()->CalcScreenParams((float)ScreenW / (float)ScreenH, 1.0f, &NativeW, &NativeH);
+	if(NativeW <= 0.001f || NativeH <= 0.001f)
+		return;
+
+	X *= ForcedW / NativeW;
+	Y *= ForcedH / NativeH;
+}
+
 void CAspectRatio::BeginFrame()
 {
 	Graphics()->SetScreenAspectOverrideEnabled(true);
 	m_HudAspectDisabled = false;
 	m_MusicPlayerAspectDisabled = false;
+	m_CachedUseGameNoHudAspect = UseGameNoHudAspect();
 	GameClient()->m_TClient.SetForcedAspect();
 }
 
 void CAspectRatio::PrepareComponent(const CComponent *pComponent)
 {
-	if(!UseGameNoHudAspect())
+	if(!m_CachedUseGameNoHudAspect)
 		return;
 
 	if(m_MusicPlayerAspectDisabled && pComponent != &GameClient()->m_MusicPlayer)
@@ -138,32 +174,32 @@ void CAspectRatio::PrepareComponent(const CComponent *pComponent)
 
 void CAspectRatio::BeforeFogRect()
 {
-	if(UseGameNoHudAspect() && m_HudAspectDisabled)
+	if(m_CachedUseGameNoHudAspect && m_HudAspectDisabled)
 		Graphics()->SetScreenAspectOverrideEnabled(true);
 }
 
 void CAspectRatio::AfterFogRect()
 {
-	if(UseGameNoHudAspect() && m_HudAspectDisabled)
+	if(m_CachedUseGameNoHudAspect && m_HudAspectDisabled)
 		Graphics()->SetScreenAspectOverrideEnabled(false);
 }
 
 void CAspectRatio::BeginCursorGameAspect()
 {
-	if(UseGameNoHudAspect())
+	if(m_CachedUseGameNoHudAspect)
 		Graphics()->SetScreenAspectOverrideEnabled(true);
 }
 
 void CAspectRatio::EndCursorGameAspect()
 {
-	if(UseGameNoHudAspect())
+	if(m_CachedUseGameNoHudAspect)
 		Graphics()->SetScreenAspectOverrideEnabled(false);
 }
 
 void CAspectRatio::UpdateConfirm()
 {
 	constexpr int CONFIRM_SECONDS = 10;
-	const SConfig Cur = ReadConfig();
+	const CAspectConfig Cur = ReadConfig();
 
 	if(!m_ConfirmSeeded)
 	{
@@ -258,7 +294,7 @@ void CAspectRatio::RenderConfirmOverlay(bool MenuActive)
 
 		auto RenderOverlayBtn = [&](const CUIRect &Rect, const char *pText, ColorRGBA Normal, ColorRGBA Hovered) -> bool {
 			const bool Hover = RealMouse.x >= Rect.x && RealMouse.x < Rect.x + Rect.w &&
-				RealMouse.y >= Rect.y && RealMouse.y < Rect.y + Rect.h;
+					   RealMouse.y >= Rect.y && RealMouse.y < Rect.y + Rect.h;
 			Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, Hover ? Hovered : Normal, IGraphics::CORNER_ALL, 3.0f);
 			Ui()->DoLabel(&Rect, pText, 10.5f, TEXTALIGN_MC);
 			return Hover && Ui()->MouseButtonClicked(0);

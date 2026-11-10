@@ -15,6 +15,7 @@
 #include <generated/client_data.h>
 
 // bestclient
+#include <game/client/bc_menu_badges.h>
 #include <game/client/components/bestclient/version.h>
 // bestclient
 #include <game/client/gameclient.h>
@@ -53,13 +54,13 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 
 	ExtMenu.HSplitBottom(20.0f, &ExtMenu, &Button);
 	static CButtonContainer s_DiscordButton;
-	if(GameClient()->m_Menus.DoButton_Menu(&s_DiscordButton, Localize("Discord"), 0, &Button, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+	if(GameClient()->m_Menus.DoButton_Menu(&s_DiscordButton, BcLocalize("Discord"), 0, &Button, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f))) // bestclient
 		Client()->ViewLink("https://discord.gg/bestclient");
 
 	ExtMenu.HSplitBottom(5.0f, &ExtMenu, nullptr);
 	ExtMenu.HSplitBottom(20.0f, &ExtMenu, &Button);
 	static CButtonContainer s_TelegramButton;
-	if(GameClient()->m_Menus.DoButton_Menu(&s_TelegramButton, Localize("Telegram"), 0, &Button, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+	if(GameClient()->m_Menus.DoButton_Menu(&s_TelegramButton, BcLocalize("Telegram"), 0, &Button, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f))) // bestclient
 		Client()->ViewLink("https://t.me/bestddnet");
 
 	ExtMenu.HSplitBottom(5.0f, &ExtMenu, nullptr);
@@ -71,6 +72,25 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 		Updater()->CheckForUpdate();
 #endif
 	}
+
+	// bestclient
+	ExtMenu.HSplitBottom(5.0f, &ExtMenu, nullptr);
+	ExtMenu.HSplitBottom(20.0f, &ExtMenu, &Button);
+	static CButtonContainer s_TryLightButton;
+	if(GameClient()->m_Menus.DoButton_Menu(&s_TryLightButton, BcLocalize("Try Light"), 0, &Button, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+		Client()->ViewLink("https://github.com/BestProjectTeam/BestClient-Light");
+	{
+		BcMenuBadges::SBadge CornerNew = BcMenuBadges::New;
+		CornerNew.m_FontSize = 8.0f;
+		CornerNew.m_Rounding = 3.0f;
+		CUIRect NewBadge;
+		NewBadge.h = 11.0f;
+		NewBadge.w = TextRender()->TextWidth(CornerNew.m_FontSize, CornerNew.m_pText) + 8.0f;
+		NewBadge.x = Button.x + Button.w - NewBadge.w + 2.0f;
+		NewBadge.y = Button.y - 4.0f;
+		BcMenuBadges::DrawAt(Graphics(), Ui(), TextRender(), NewBadge, CornerNew);
+	}
+	// bestclient
 
 	constexpr float LogoW = 360.0f;
 	constexpr float LogoH = 103.0f;
@@ -213,8 +233,23 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 			UpdateRow.y += SettingsButton.h + ButtonGap;
 			UpdateRow.h = 22.0f;
 
-			CUIRect UpdateLabel, UpdateButton;
-			UpdateRow.VSplitRight(120.0f, &UpdateLabel, &UpdateButton);
+			// bestclient
+			CUIRect UpdateLabel, UpdateButton, ChangelogButton{};
+			const bool ShowChangelogButton = ShowDownloadButton || ShowRetryButton;
+			if(ShowChangelogButton)
+			{
+				const float ButtonFont = 14.0f;
+				const float DownloadW = std::max(90.0f, TextRender()->TextWidth(ButtonFont, Localize("Download")) + 16.0f);
+				const float ChangelogW = std::max(90.0f, TextRender()->TextWidth(ButtonFont, BcLocalize("Changelog")) + 16.0f);
+				UpdateRow.VSplitRight(DownloadW, &UpdateRow, &UpdateButton);
+				UpdateRow.VSplitRight(6.0f, &UpdateRow, nullptr);
+				UpdateRow.VSplitRight(ChangelogW, &UpdateLabel, &ChangelogButton);
+			}
+			else
+			{
+				UpdateRow.VSplitRight(120.0f, &UpdateLabel, &UpdateButton);
+			}
+			// bestclient
 			UpdateLabel.VSplitRight(10.0f, &UpdateLabel, nullptr);
 
 			if(ShowDownloadButton)
@@ -248,6 +283,11 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 				static CButtonContainer s_MenuUpdateDownload;
 				if(GameClient()->m_Menus.DoButton_Menu(&s_MenuUpdateDownload, Localize("Download"), 0, &UpdateButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
 					Updater()->InitiateUpdate();
+				// bestclient
+				static CButtonContainer s_MenuUpdateChangelog;
+				if(GameClient()->m_Menus.DoButton_Menu(&s_MenuUpdateChangelog, BcLocalize("Changelog"), 0, &ChangelogButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+					NewPage = CMenus::PAGE_CHANGELOG;
+				// bestclient
 			}
 			else if(ShowRestartButton)
 			{

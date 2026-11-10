@@ -93,6 +93,7 @@
 	{"Enable mouse", SETTINGS_NAV_LEAF_BC_VISUALS, "Keystrokes", &g_Config.m_BcKeystrokesMouse, nullptr},
 
 	{"Aspect Ratio", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals", &g_Config.m_BcCustomAspectRatioMode, nullptr},
+	{"Cursor as without stretch", SETTINGS_NAV_LEAF_BC_VISUALS, "Aspect Ratio", &g_Config.m_BcCustomAspectRatioCursorNative, nullptr},
 
 	{"Physic Balls", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals", &g_Config.m_BcPhysicBallsSpawnCount, nullptr},
 	{"Spawn count", SETTINGS_NAV_LEAF_BC_VISUALS, "Physic Balls", &g_Config.m_BcPhysicBallsSpawnCount, nullptr},
@@ -149,11 +150,13 @@
 	{"Color", SETTINGS_NAV_LEAF_BC_VISUALS, "Freeze lightning", &g_Config.m_BcFreezeLightningColor, &g_Config.m_BcFreezeLightning},
 
 	{"Map preview in server list", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcServerMapPreview, nullptr},
+	{"Show coordinates above tees", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowTeeCoords, nullptr},
 	{"Show real hitbox", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowRealHitbox, nullptr},
 	{"Real hitbox dot color", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowRealHitboxColor, &g_Config.m_BcShowRealHitbox},
 	{"Show player below indicator", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowhudDummyCoordIndicator, nullptr},
 	{"Show current checkpoint in hud", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowCorrectCheckpoint, nullptr},
 	{"Show points in tab", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowPointsInTab, nullptr},
+	{"Show friend icon in scoreboard", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcScoreboardFriendMark, nullptr},
 	{"Show spectator nicknames", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowSpectatorNames, nullptr},
 	{"Show vote percentage", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcShowVotePercentage, nullptr},
 	{"Display max FPS", SETTINGS_NAV_LEAF_BC_VISUALS, "Visuals QoL", &g_Config.m_BcDisplayMaxFps, nullptr},
@@ -197,6 +200,7 @@
 	{"Inputs", SETTINGS_NAV_LEAF_BC_GAMEPLAY, "Gameplay", &g_Config.m_BcInputs, nullptr},
 	{"Sub-Tick aiming", SETTINGS_NAV_LEAF_BC_GAMEPLAY, "Inputs", &g_Config.m_ClSubTickAiming, nullptr},
 	{"Auto margin", SETTINGS_NAV_LEAF_BC_GAMEPLAY, "Inputs", &g_Config.m_BcAutoMargin, nullptr},
+	{"Input Debounce", SETTINGS_NAV_LEAF_BC_GAMEPLAY, "Inputs", &g_Config.m_BcInputDebounce, nullptr},
 
 	{"Snap Tap", SETTINGS_NAV_LEAF_BC_GAMEPLAY, "Gameplay", &g_Config.m_BcSnapTap, nullptr},
 	{"Delay", SETTINGS_NAV_LEAF_BC_GAMEPLAY, "Snap Tap", &g_Config.m_BcSnapTapDelay, &g_Config.m_BcSnapTap},
