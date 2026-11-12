@@ -1,0 +1,60 @@
+name: Publish Latest
+
+# After every successful Windows build of main, puts the zip on a public
+# "latest" pre-release, so anyone can download it without a GitHub account:
+#   https://github.com/cubc/ddnetty/releases/download/latest/DDNetty-windows.zip
+
+on:
+  workflow_run:
+    workflows: ["Fast Build"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-latest
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'push'
+    steps:
+    - name: Check the Windows build passed
+      id: check
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        Result=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs" \
+          --jq '.jobs[] | select(.name == "build-cmake (windows-latest)") | .conclusion')
+        echo "Windows build: $Result"
+        echo "ok=$([ "$Result" = success ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+    - name: Download the Windows build
+      if: steps.check.outputs.ok == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: ddnet-windows-latest
+        path: artifact
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ github.token }}
+
+    - name: Publish
+      if: steps.check.outputs.ok == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        Zip=$(ls artifact/*.zip | head -n 1)
+        cp "$Zip" DDNetty-windows.zip
+        Notes="Latest DDNetty build for Windows, from main at ${SHA:0:7} ($(date -u '+%Y-%m-%d %H:%M UTC')).
+
+        Download **DDNetty-windows.zip**, extract it and run DDNet.exe. This link always points to the newest build:
+        https://github.com/${{ github.repository }}/releases/download/latest/DDNetty-windows.zip"
+        # recreate the release so the tag points at this commit
+        gh release delete latest --repo "${{ github.repository }}" --cleanup-tag --yes || true
+        gh release create latest DDNetty-windows.zip --repo "${{ github.repository }}" \
+          --target "$SHA" --prerelease --title "DDNetty (latest build)" --notes "$Notes"
